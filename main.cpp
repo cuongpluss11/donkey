@@ -16,8 +16,8 @@ const int CAR_WIDTH = 50;
 const int CAR_HEIGHT = 80;
 const int DONKEY_WIDTH = 50;
 const int DONKEY_HEIGHT = 80;
-const int COIN_WIDTH = 30;
-const int COIN_HEIGHT = 30;
+const int COIN_WIDTH = 40;  // Tăng kích cỡ đồng xu
+const int COIN_HEIGHT = 40; // Tăng kích cỡ đồng xu
 
 // Tốc độ di chuyển
 float car_speed = 5.0f;
@@ -28,9 +28,10 @@ const float ACCELERATION = 0.01f; // Gia tốc tăng dần
 const int SPEED_INCREASE_THRESHOLD = 10; // Cứ 10 điểm thì tăng tốc độ
 const float SPEED_INCREMENT = 1.0f;     // Tốc độ tăng thêm mỗi lần
 
-// Tốc độ cuộn cây cỏ
-float grass_scroll_speed = 2.0f;
-float grass_offset = 0.0f;
+// Nhảy
+bool isJumping = false;
+const int JUMP_HEIGHT = 100; // Độ cao nhảy
+int jumpProgress = 0;        // Tiến trình nhảy
 
 // Biến toàn cục
 SDL_Window* window = NULL;
@@ -39,7 +40,6 @@ SDL_Texture* carTexture = NULL;
 SDL_Texture* donkeyTexture = NULL;
 SDL_Texture* coinTexture = NULL;       // Texture cho đồng tiền vàng
 SDL_Texture* explosionTexture = NULL;  // Texture cho hiệu ứng nổ
-SDL_Texture* grassTexture = NULL;      // Texture cho cỏ cây
 SDL_Texture* introTexture = NULL;      // Texture cho màn hình intro
 TTF_Font* font = NULL;
 
@@ -94,23 +94,12 @@ void renderBackground() {
     SDL_Rect road = {160, 0, SCREEN_WIDTH - 320, SCREEN_HEIGHT};
     SDL_RenderFillRect(renderer, &road);
 
-    SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255); // Màu trắng cho vạch kẻ
-    for (int i = 0; i < SCREEN_HEIGHT; i += 40) {
-        SDL_Rect laneMark = {SCREEN_WIDTH / 2 - 5, i, 10, 20};
-        SDL_RenderFillRect(renderer, &laneMark);
+    // Vẽ viền gạch
+    SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255); // Màu trắng
+    for (int i = 0; i < SCREEN_HEIGHT; i += 20) {
+        SDL_RenderDrawLine(renderer, 160, i, 160 + 10, i); // Viền trái
+        SDL_RenderDrawLine(renderer, SCREEN_WIDTH - 160 - 10, i, SCREEN_WIDTH - 160, i); // Viền phải
     }
-
-    // Vẽ cỏ cây ven đường với hiệu ứng cuộn
-    SDL_Rect leftGrass = {0, (int)grass_offset, 160, SCREEN_HEIGHT};
-    SDL_Rect rightGrass = {SCREEN_WIDTH - 160, (int)grass_offset, 160, SCREEN_HEIGHT};
-    SDL_RenderCopy(renderer, grassTexture, NULL, &leftGrass);
-    SDL_RenderCopy(renderer, grassTexture, NULL, &rightGrass);
-
-    // Vẽ thêm một bản sao của cỏ cây để tạo hiệu ứng cuộn liên tục
-    SDL_Rect leftGrass2 = {0, (int)grass_offset - SCREEN_HEIGHT, 160, SCREEN_HEIGHT};
-    SDL_Rect rightGrass2 = {SCREEN_WIDTH - 160, (int)grass_offset - SCREEN_HEIGHT, 160, SCREEN_HEIGHT};
-    SDL_RenderCopy(renderer, grassTexture, NULL, &leftGrass2);
-    SDL_RenderCopy(renderer, grassTexture, NULL, &rightGrass2);
 }
 
 // Vẽ điểm số và số tiền vàng trên màn hình
@@ -152,9 +141,6 @@ bool loadMedia() {
     explosionTexture = loadTexture("no.png");
     if (!explosionTexture) return false;
 
-    grassTexture = loadTexture("grass.png");
-    if (!grassTexture) return false;
-
     introTexture = loadTexture("intro2.jpg");
     if (!introTexture) return false;
 
@@ -167,7 +153,6 @@ void close() {
     SDL_DestroyTexture(donkeyTexture);
     SDL_DestroyTexture(coinTexture);
     SDL_DestroyTexture(explosionTexture);
-    SDL_DestroyTexture(grassTexture);
     SDL_DestroyTexture(introTexture);
     TTF_CloseFont(font);
     SDL_DestroyRenderer(renderer);
@@ -310,7 +295,27 @@ void gameLoop() {
                         donkey.x += (int)donkey_speed;
                         if (donkey.x + DONKEY_WIDTH > SCREEN_WIDTH - 160) donkey.x = SCREEN_WIDTH - 160 - DONKEY_WIDTH;
                         break;
+                    case SDLK_UP:
+                        if (!isJumping) {
+                            isJumping = true;
+                            jumpProgress = 0;
+                        }
+                        break;
                 }
+            }
+        }
+
+        // Xử lý nhảy
+        if (isJumping) {
+            if (jumpProgress < JUMP_HEIGHT) {
+                donkey.y -= 5; // Nhảy lên
+                jumpProgress += 5;
+            } else if (jumpProgress < JUMP_HEIGHT * 2) {
+                donkey.y += 5; // Rơi xuống
+                jumpProgress += 5;
+            } else {
+                isJumping = false;
+                donkey.y = SCREEN_HEIGHT - DONKEY_HEIGHT - 20; // Reset vị trí
             }
         }
 
@@ -340,12 +345,6 @@ void gameLoop() {
         // Tăng tốc độ xe khi đạt ngưỡng điểm
         if (score % SPEED_INCREASE_THRESHOLD == 0 && score != 0) {
             car_speed += SPEED_INCREMENT;
-        }
-
-        // Cập nhật vị trí cuộn của cỏ cây
-        grass_offset += grass_scroll_speed;
-        if (grass_offset > SCREEN_HEIGHT) {
-            grass_offset = 0.0f;
         }
 
         if (checkCollision(donkey, car)) {
