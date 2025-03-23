@@ -8,12 +8,15 @@ using namespace std;
 
 const int SCREEN_WIDTH = 640;
 const int SCREEN_HEIGHT = 480;
-const int CAR_WIDTH = 90; // Điều chỉnh kích thước xe
+const int CAR_WIDTH = 90;
 const int CAR_HEIGHT = 120;
-const int DONKEY_WIDTH = 90; // Điều chỉnh kích thước con lừa
+const int DONKEY_WIDTH = 90;
 const int DONKEY_HEIGHT = 120;
 const int COIN_WIDTH = 80;
 const int COIN_HEIGHT = 80;
+const int LEFT_LANE_CENTER = 160 + ((SCREEN_WIDTH - 320) / 4);
+const int RIGHT_LANE_CENTER = SCREEN_WIDTH / 2 + ((SCREEN_WIDTH - 320) / 4);
+
 
 float car_speed = 3.0f; // Giảm tốc độ ban đầu
 float donkey_speed = 3.0f;
@@ -34,10 +37,12 @@ SDL_Texture* explosionTexture = NULL;
 SDL_Texture* introTexture = NULL;
 TTF_Font* font = NULL;
 
-SDL_Rect car = {rand() % 2 == 0 ? 160 : SCREEN_WIDTH / 2, -CAR_HEIGHT, CAR_WIDTH, CAR_HEIGHT};
-SDL_Rect donkey = {SCREEN_WIDTH / 2 - DONKEY_WIDTH / 2, SCREEN_HEIGHT - DONKEY_HEIGHT - 20, DONKEY_WIDTH, DONKEY_HEIGHT};
+SDL_Rect car = {SCREEN_WIDTH / 2 - CAR_WIDTH / 2, SCREEN_HEIGHT - CAR_HEIGHT - 20, CAR_WIDTH, CAR_HEIGHT};
+SDL_Rect donkey = {rand() % 2 == 0 ? 160 : SCREEN_WIDTH / 2, -DONKEY_HEIGHT, DONKEY_WIDTH, DONKEY_HEIGHT};
 SDL_Rect coin = {rand() % (SCREEN_WIDTH - 320 - COIN_WIDTH) + 160, -COIN_HEIGHT, COIN_WIDTH, COIN_HEIGHT};
-
+//SDL_Rect car = {SCREEN_WIDTH / 4 - CAR_WIDTH / 2, SCREEN_HEIGHT - CAR_HEIGHT - 20, CAR_WIDTH, CAR_HEIGHT};
+//SDL_Rect donkey = {rand() % 2 == 0 ? SCREEN_WIDTH / 4 - DONKEY_WIDTH / 2 : (3 * SCREEN_WIDTH / 4 - DONKEY_WIDTH / 2), -DONKEY_HEIGHT, DONKEY_WIDTH, DONKEY_HEIGHT};
+//SDL_Rect coin = {rand() % 2 == 0 ? SCREEN_WIDTH / 4 - COIN_WIDTH / 2 : (3 * SCREEN_WIDTH / 4 - COIN_WIDTH / 2), -COIN_HEIGHT, COIN_WIDTH, COIN_HEIGHT};
 int goldCoins = 0;
 int lives = 0;
 
@@ -71,7 +76,7 @@ bool init() {
 }
 
 void renderBackground() {
-    SDL_SetRenderDrawColor(renderer, 0, 128, 128, 255);
+    SDL_SetRenderDrawColor(renderer, 1, 128, 129, 255);
     SDL_Rect leftPanel = {0, 0, 160, SCREEN_HEIGHT};
     SDL_Rect rightPanel = {SCREEN_WIDTH - 160, 0, 160, SCREEN_HEIGHT};
     SDL_RenderFillRect(renderer, &leftPanel);
@@ -90,6 +95,51 @@ void renderBackground() {
     for (int i = 0; i < SCREEN_HEIGHT; i += 40) {
         SDL_RenderDrawLine(renderer, SCREEN_WIDTH / 2 - 5, i, SCREEN_WIDTH / 2 - 5, i + 20);
     }
+}
+
+void countdown() {
+    if (!font) {
+        font = TTF_OpenFont("Arial.ttf", 64); // Đảm bảo font được tải với kích thước 64
+        if (!font) {
+            cout << "Failed to load font! SDL_ttf Error: " << TTF_GetError() << endl;
+            return;
+        }
+    }
+
+    for (int i = 3; i > 0; --i) {
+        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+        SDL_RenderClear(renderer);
+
+        string countText = to_string(i);
+        SDL_Color textColor = {255, 255, 255, 255};
+        SDL_Surface* textSurface = TTF_RenderText_Solid(font, countText.c_str(), textColor);
+        SDL_Texture* textTexture = SDL_CreateTextureFromSurface(renderer, textSurface);
+        SDL_Rect textRect = {SCREEN_WIDTH / 2 - textSurface->w / 2, SCREEN_HEIGHT / 2 - textSurface->h / 2, textSurface->w, textSurface->h};
+        SDL_RenderCopy(renderer, textTexture, NULL, &textRect);
+
+        SDL_FreeSurface(textSurface);
+        SDL_DestroyTexture(textTexture);
+
+        SDL_RenderPresent(renderer);
+        SDL_Delay(1000); // Chờ 1 giây
+    }
+
+    // Hiển thị "Start!"
+    SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+    SDL_RenderClear(renderer);
+
+    string startText = "Start!!!";
+    SDL_Color textColor = {255, 255, 255, 255};
+    SDL_Surface* textSurface = TTF_RenderText_Solid(font, startText.c_str(), textColor);
+    SDL_Texture* textTexture = SDL_CreateTextureFromSurface(renderer, textSurface);
+    SDL_Rect textRect = {SCREEN_WIDTH / 2 - textSurface->w / 2, SCREEN_HEIGHT / 2 - textSurface->h / 2, textSurface->w, textSurface->h};
+    SDL_RenderCopy(renderer, textTexture, NULL, &textRect);
+
+    SDL_FreeSurface(textSurface);
+    SDL_DestroyTexture(textTexture);
+
+    SDL_RenderPresent(renderer);
+    SDL_Delay(500); // Chờ 0.5 giây
 }
 
 void renderScore(int score, int goldCoins, int lives) {
@@ -275,12 +325,23 @@ void gameLoop() {
                 quit = true;
             } else if (e.type == SDL_KEYDOWN) {
                 switch (e.key.keysym.sym) {
-                    case SDLK_LEFT:
-                        donkey.x = 160;
-                        break;
-                    case SDLK_RIGHT:
-                        donkey.x = SCREEN_WIDTH / 2;
-                        break;
+    case SDLK_LEFT:
+        car.x = LEFT_LANE_CENTER - CAR_WIDTH / 2; // Giữa làn trái
+        break;
+    case SDLK_RIGHT:
+        car.x = RIGHT_LANE_CENTER - CAR_WIDTH / 2; // Giữa làn phải
+        break;
+
+
+//                switch (e.key.keysym.sym) {
+//                    case SDLK_LEFT:
+//                        car.x = 160;
+//                        break;
+//                    case SDLK_RIGHT:
+//                        car.x = SCREEN_WIDTH / 2;
+//                        break;
+
+
                     case SDLK_UP:
                         if (!isJumping) {
                             isJumping = true;
@@ -293,34 +354,40 @@ void gameLoop() {
 
         if (isJumping) {
             if (jumpProgress < JUMP_HEIGHT) {
-                donkey.y -= 5;
+                car.y -= 5;
                 jumpProgress += 5;
             } else if (jumpProgress < JUMP_HEIGHT * 2) {
-                donkey.y += 5;
+                car.y += 5;
                 jumpProgress += 5;
             } else {
                 isJumping = false;
-                donkey.y = SCREEN_HEIGHT - DONKEY_HEIGHT - 20;
+                car.y = SCREEN_HEIGHT - CAR_HEIGHT - 20;
             }
         }
 
         Uint32 currentTime = SDL_GetTicks();
-        car_speed += ACCELERATION * ((currentTime - startTime) / 1000.0f);
+        donkey_speed += ACCELERATION * ((currentTime - startTime) / 1000.0f);
 
-        car.y += (int)car_speed;
-        if (car.y > SCREEN_HEIGHT) {
-            car.x = rand() % 2 == 0 ? 160 : SCREEN_WIDTH / 2;
-            car.y = -CAR_HEIGHT;
+        donkey.y += (int)donkey_speed;
+        if (donkey.y > SCREEN_HEIGHT) {
+                donkey.x = (rand() % 2 == 0) ? (LEFT_LANE_CENTER - DONKEY_WIDTH / 2)
+                             : (RIGHT_LANE_CENTER - DONKEY_WIDTH / 2);
+
+//            donkey.x = rand() % 2 == 0 ? 160 : SCREEN_WIDTH / 2;
+            donkey.y = -DONKEY_HEIGHT;
             score++;
         }
 
-        coin.y += (int)car_speed;
+        coin.y += (int)donkey_speed;
         if (coin.y > SCREEN_HEIGHT) {
-            coin.x = rand() % (SCREEN_WIDTH - 320 - COIN_WIDTH) + 160;
+                coin.x = (rand() % 2 == 0) ? (LEFT_LANE_CENTER - COIN_WIDTH / 2)
+                           : (RIGHT_LANE_CENTER - COIN_WIDTH / 2);
+
+//            coin.x = rand() % (SCREEN_WIDTH - 320 - COIN_WIDTH) + 160;
             coin.y = -COIN_HEIGHT;
         }
 
-        if (checkCollision(donkey, coin)) {
+        if (checkCollision(car, coin)) {
             goldCoins++;
             if (goldCoins % 5 == 0) {
                 lives++;
@@ -330,28 +397,28 @@ void gameLoop() {
         }
 
         if (score % SPEED_INCREASE_THRESHOLD == 0 && score != 0) {
-            car_speed += SPEED_INCREMENT;
+            donkey_speed += SPEED_INCREMENT;
         }
 
-        if (checkCollision(donkey, car)) {
+        if (checkCollision(car, donkey)) {
             if (lives > 0) {
                 lives--;
-                car.x = rand() % 2 == 0 ? 160 : SCREEN_WIDTH / 2;
-                car.y = -CAR_HEIGHT;
+                donkey.x = rand() % 2 == 0 ? 160 : SCREEN_WIDTH / 2;
+                donkey.y = -DONKEY_HEIGHT;
             } else {
-                showExplosion(donkey.x + DONKEY_WIDTH / 2, donkey.y + DONKEY_HEIGHT / 2);
+                showExplosion(car.x + CAR_WIDTH / 2, car.y + CAR_HEIGHT / 2);
 
                 if (showGameOver(score, goldCoins)) {
-                    car.x = rand() % 2 == 0 ? 160 : SCREEN_WIDTH / 2;
-                    car.y = -CAR_HEIGHT;
-                    donkey.x = SCREEN_WIDTH / 2 - DONKEY_WIDTH / 2;
-                    donkey.y = SCREEN_HEIGHT - DONKEY_HEIGHT - 20;
+                    donkey.x = rand() % 2 == 0 ? 160 : SCREEN_WIDTH / 2;
+                    donkey.y = -DONKEY_HEIGHT;
+                    car.x = SCREEN_WIDTH / 2 - CAR_WIDTH / 2;
+                    car.y = SCREEN_HEIGHT - CAR_HEIGHT - 20;
                     coin.x = rand() % (SCREEN_WIDTH - 320 - COIN_WIDTH) + 160;
                     coin.y = -COIN_HEIGHT;
                     score = 0;
                     goldCoins = 0;
                     lives = 0;
-                    car_speed = 3.0f;
+                    donkey_speed = 3.0f;
                     startTime = SDL_GetTicks();
                 } else {
                     quit = true;
@@ -385,6 +452,7 @@ int main(int argc, char* argv[]) {
     }
 
     showIntro();
+    countdown();
     gameLoop();
 
     close();
