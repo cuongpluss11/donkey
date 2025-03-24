@@ -1,6 +1,7 @@
 #include <SDL.h>
 #include <SDL_image.h>
 #include <SDL_ttf.h>
+#include <SDL_mixer.h>
 #include <iostream>
 #include <cstdlib>
 #include <ctime>
@@ -36,7 +37,14 @@ SDL_Texture* coinTexture = NULL;
 SDL_Texture* explosionTexture = NULL;
 SDL_Texture* introTexture = NULL;
 TTF_Font* font = NULL;
-
+Mix_Music* introMusic = NULL;
+Mix_Chunk* pointSound = NULL;
+Mix_Chunk* collisionSound = NULL;
+Mix_Chunk* countdown3Sound = nullptr;
+Mix_Chunk* countdown2Sound = nullptr;
+Mix_Chunk* countdown1Sound = nullptr;
+Mix_Chunk* countdownStartSound = nullptr;
+Mix_Chunk* engineSound = nullptr;
 SDL_Rect car = {SCREEN_WIDTH / 2 - CAR_WIDTH / 2, SCREEN_HEIGHT - CAR_HEIGHT - 20, CAR_WIDTH, CAR_HEIGHT};
 SDL_Rect donkey = {rand() % 2 == 0 ? 160 : SCREEN_WIDTH / 2, -DONKEY_HEIGHT, DONKEY_WIDTH, DONKEY_HEIGHT};
 SDL_Rect coin = {rand() % (SCREEN_WIDTH - 320 - COIN_WIDTH) + 160, -COIN_HEIGHT, COIN_WIDTH, COIN_HEIGHT};
@@ -59,6 +67,9 @@ bool init() {
         return false;
     }
     if (!(IMG_Init(IMG_INIT_PNG) & IMG_INIT_PNG)) {
+        return false;
+    }
+     if (Mix_OpenAudio(44100, MIX_DEFAULT_FORMAT, 2, 2048) < 0) {
         return false;
     }
     if (TTF_Init() == -1) {
@@ -98,6 +109,7 @@ void renderBackground() {
 }
 
 void countdown() {
+    Mix_HaltMusic();
     if (!font) {
         font = TTF_OpenFont("Arial.ttf", 64); // Đảm bảo font được tải với kích thước 64
         if (!font) {
@@ -119,6 +131,17 @@ void countdown() {
 
         SDL_FreeSurface(textSurface);
         SDL_DestroyTexture(textTexture);
+            switch (i) {
+            case 3:
+                Mix_PlayChannel(-1, countdown3Sound, 0);
+                break;
+            case 2:
+                Mix_PlayChannel(-1, countdown2Sound, 0);
+                break;
+            case 1:
+                Mix_PlayChannel(-1, countdown1Sound, 0);
+                break;
+        }
 
         SDL_RenderPresent(renderer);
         SDL_Delay(1000); // Chờ 1 giây
@@ -137,7 +160,7 @@ void countdown() {
 
     SDL_FreeSurface(textSurface);
     SDL_DestroyTexture(textTexture);
-
+    Mix_PlayChannel(-1, engineSound, -1);
     SDL_RenderPresent(renderer);
     SDL_Delay(500); // Chờ 0.5 giây
 }
@@ -190,7 +213,21 @@ bool loadMedia() {
 
     introTexture = loadTexture("intro2.jpg");
     if (!introTexture) return false;
-
+        introMusic = Mix_LoadMUS("amthanhintro.mp3");
+    if (!introMusic) return false;
+     pointSound = Mix_LoadWAV("amthanhkhitinh1diem.wav");
+    if (!pointSound) return false;
+        collisionSound = Mix_LoadWAV("vacham.wav");
+    if (!collisionSound) return false;
+     countdown3Sound = Mix_LoadWAV("3.wav");
+    if (!countdown3Sound) return false;
+     countdown2Sound = Mix_LoadWAV("2.wav");
+    if (!countdown2Sound) return false;
+     countdown1Sound = Mix_LoadWAV("1.wav");
+    if (!countdown3Sound) return false;
+     engineSound = Mix_LoadWAV("dongco.wav");
+    if (!engineSound) return false;
+    Mix_VolumeChunk(engineSound, MIX_MAX_VOLUME /8);
     return true;
 }
 
@@ -203,8 +240,17 @@ void close() {
     TTF_CloseFont(font);
     SDL_DestroyRenderer(renderer);
     SDL_DestroyWindow(window);
+    Mix_FreeMusic(introMusic);
+    Mix_FreeChunk(pointSound);
+    Mix_FreeChunk(collisionSound);
+    Mix_FreeChunk(countdown3Sound);
+    Mix_FreeChunk(countdown2Sound);
+    Mix_FreeChunk(countdown1Sound);
+    Mix_FreeChunk(engineSound);
     TTF_Quit();
     IMG_Quit();
+    SDL_Quit();
+    Mix_Quit();
     SDL_Quit();
 }
 
@@ -220,6 +266,7 @@ void showExplosion(int x, int y) {
 }
 
 void showIntro() {
+    Mix_PlayMusic(introMusic, -1);
     SDL_RenderCopy(renderer, introTexture, NULL, NULL);
 
     if (!font) {
@@ -244,6 +291,7 @@ void showIntro() {
     while (!quit) {
         while (SDL_PollEvent(&e) != 0) {
             if (e.type == SDL_QUIT) {
+                    Mix_HaltMusic();
                 quit = true;
                 exit(0);
             } else if (e.type == SDL_KEYDOWN) {
@@ -331,17 +379,6 @@ void gameLoop() {
     case SDLK_RIGHT:
         car.x = RIGHT_LANE_CENTER - CAR_WIDTH / 2; // Giữa làn phải
         break;
-
-
-//                switch (e.key.keysym.sym) {
-//                    case SDLK_LEFT:
-//                        car.x = 160;
-//                        break;
-//                    case SDLK_RIGHT:
-//                        car.x = SCREEN_WIDTH / 2;
-//                        break;
-
-
                     case SDLK_UP:
                         if (!isJumping) {
                             isJumping = true;
@@ -373,17 +410,15 @@ void gameLoop() {
                 donkey.x = (rand() % 2 == 0) ? (LEFT_LANE_CENTER - DONKEY_WIDTH / 2)
                              : (RIGHT_LANE_CENTER - DONKEY_WIDTH / 2);
 
-//            donkey.x = rand() % 2 == 0 ? 160 : SCREEN_WIDTH / 2;
             donkey.y = -DONKEY_HEIGHT;
             score++;
+             Mix_PlayChannel(-1, pointSound, 0);
         }
 
         coin.y += (int)donkey_speed;
         if (coin.y > SCREEN_HEIGHT) {
                 coin.x = (rand() % 2 == 0) ? (LEFT_LANE_CENTER - COIN_WIDTH / 2)
                            : (RIGHT_LANE_CENTER - COIN_WIDTH / 2);
-
-//            coin.x = rand() % (SCREEN_WIDTH - 320 - COIN_WIDTH) + 160;
             coin.y = -COIN_HEIGHT;
         }
 
@@ -394,6 +429,7 @@ void gameLoop() {
             }
             coin.x = rand() % (SCREEN_WIDTH - 320 - COIN_WIDTH) + 160;
             coin.y = -COIN_HEIGHT;
+
         }
 
         if (score % SPEED_INCREASE_THRESHOLD == 0 && score != 0) {
@@ -407,7 +443,8 @@ void gameLoop() {
                 donkey.y = -DONKEY_HEIGHT;
             } else {
                 showExplosion(car.x + CAR_WIDTH / 2, car.y + CAR_HEIGHT / 2);
-
+                 Mix_HaltChannel(-1);
+                 Mix_PlayChannel(-1, collisionSound, 0);
                 if (showGameOver(score, goldCoins)) {
                     donkey.x = rand() % 2 == 0 ? 160 : SCREEN_WIDTH / 2;
                     donkey.y = -DONKEY_HEIGHT;
@@ -420,6 +457,7 @@ void gameLoop() {
                     lives = 0;
                     donkey_speed = 3.0f;
                     startTime = SDL_GetTicks();
+                    Mix_PlayChannel(-1, engineSound, -1);
                 } else {
                     quit = true;
                 }

@@ -1,8 +1,9 @@
 # depslib dependency file v1.0
-1742689230 source:c:\users\admin\desktop\sdl2codegmae\codegame\main.cpp
+1742781086 source:c:\users\admin\desktop\sdl2codegmae\codegame\main.cpp
 	<SDL.h>
 	<SDL_image.h>
 	<SDL_ttf.h>
+	<SDL_mixer.h>
 	<iostream>
 	<cstdlib>
 	<ctime>
