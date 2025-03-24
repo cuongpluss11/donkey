@@ -45,6 +45,7 @@ Mix_Chunk* countdown2Sound = nullptr;
 Mix_Chunk* countdown1Sound = nullptr;
 Mix_Chunk* countdownStartSound = nullptr;
 Mix_Chunk* engineSound = nullptr;
+Mix_Chunk* startSound = nullptr;
 SDL_Rect car = {SCREEN_WIDTH / 2 - CAR_WIDTH / 2, SCREEN_HEIGHT - CAR_HEIGHT - 20, CAR_WIDTH, CAR_HEIGHT};
 SDL_Rect donkey = {rand() % 2 == 0 ? 160 : SCREEN_WIDTH / 2, -DONKEY_HEIGHT, DONKEY_WIDTH, DONKEY_HEIGHT};
 SDL_Rect coin = {rand() % (SCREEN_WIDTH - 320 - COIN_WIDTH) + 160, -COIN_HEIGHT, COIN_WIDTH, COIN_HEIGHT};
@@ -87,7 +88,7 @@ bool init() {
 }
 
 void renderBackground() {
-    SDL_SetRenderDrawColor(renderer, 1, 128, 129, 255);
+    SDL_SetRenderDrawColor(renderer, 194, 178, 128, 255);
     SDL_Rect leftPanel = {0, 0, 160, SCREEN_HEIGHT};
     SDL_Rect rightPanel = {SCREEN_WIDTH - 160, 0, 160, SCREEN_HEIGHT};
     SDL_RenderFillRect(renderer, &leftPanel);
@@ -96,7 +97,12 @@ void renderBackground() {
     SDL_SetRenderDrawColor(renderer, 100, 100, 100, 255);
     SDL_Rect road = {160, 0, SCREEN_WIDTH - 320, SCREEN_HEIGHT};
     SDL_RenderFillRect(renderer, &road);
-
+ // Vẽ phần màu gạch
+    SDL_SetRenderDrawColor(renderer, 178, 34, 34, 255); // Màu gạch
+    SDL_Rect brickLeft = {160, 0, 10, SCREEN_HEIGHT}; // Phần gạch bên trái
+    SDL_Rect brickRight = {SCREEN_WIDTH - 170, 0, 10, SCREEN_HEIGHT}; // Phần gạch bên phải
+    SDL_RenderFillRect(renderer, &brickLeft);
+    SDL_RenderFillRect(renderer, &brickRight);
     SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
     for (int i = 0; i < SCREEN_HEIGHT; i += 20) {
         SDL_RenderDrawLine(renderer, 160, i, 160 + 10, i);
@@ -160,6 +166,7 @@ void countdown() {
 
     SDL_FreeSurface(textSurface);
     SDL_DestroyTexture(textTexture);
+    Mix_PlayChannel(-1, startSound, 0);
     Mix_PlayChannel(-1, engineSound, -1);
     SDL_RenderPresent(renderer);
     SDL_Delay(500); // Chờ 0.5 giây
@@ -228,6 +235,8 @@ bool loadMedia() {
      engineSound = Mix_LoadWAV("dongco.wav");
     if (!engineSound) return false;
     Mix_VolumeChunk(engineSound, MIX_MAX_VOLUME /8);
+    startSound = Mix_LoadWAV("start.wav");
+    if (!startSound) return false;
     return true;
 }
 
@@ -247,6 +256,7 @@ void close() {
     Mix_FreeChunk(countdown2Sound);
     Mix_FreeChunk(countdown1Sound);
     Mix_FreeChunk(engineSound);
+    Mix_FreeChunk(startSound);
     TTF_Quit();
     IMG_Quit();
     SDL_Quit();
