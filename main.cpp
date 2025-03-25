@@ -21,12 +21,11 @@ const int LEFT_LANE_CENTER = 160 + ((SCREEN_WIDTH - 320) / 4);
 const int RIGHT_LANE_CENTER = SCREEN_WIDTH / 2 + ((SCREEN_WIDTH - 320) / 4);
 const int ROAD_STRIP_HEIGHT = 40;
 const int NUM_ROAD_STRIPS = (SCREEN_HEIGHT / ROAD_STRIP_HEIGHT) + 2;
-const float base_speed = 1.0f;       // Tốc độ cơ bản
-float current_speed = base_speed;    // Tốc độ hiện tại
-const int SPEED_INCREASE_THRESHOLD = 10; // Cứ 10 điểm tăng tốc 1 lần
-const float SPEED_INCREMENT = 0.01f;  // Mỗi lần tăng 0.1 tốc độ
-const float MAX_SPEED = 7.0f;       // Tốc độ tối đa
-
+const float base_speed = 1.0f;
+float current_speed = base_speed;
+const int SPEED_INCREASE_INTERVAL = 10;
+const float SPEED_INCREMENT = 0.5f;
+const float MAX_SPEED = 7.0f;
 bool isJumping = false;
 const int JUMP_HEIGHT = 100;
 int jumpProgress = 0;
@@ -503,7 +502,6 @@ current_speed = base_speed;
             }
         }
   updateRoadStrips(current_speed);
-//        Uint32 currentTime = SDL_GetTicks();
 
         donkey.y += (int)current_speed;
         if (donkey.y > SCREEN_HEIGHT) {
@@ -513,34 +511,15 @@ current_speed = base_speed;
             donkey.y = -DONKEY_HEIGHT;
             score++;
              Mix_PlayChannel(-1, pointSound, 0);
-//              if (score % SPEED_INCREASE_THRESHOLD == 0 && current_speed < MAX_SPEED) {
-//                current_speed += SPEED_INCREMENT;
-////                lastSpeedIncreaseScore = score;
-//    if (current_speed > MAX_SPEED) {
-//        current_speed = MAX_SPEED;
-//    }
-// if (score >= lastSpeedIncreaseAt + SPEED_INCREASE_THRESHOLD && current_speed < MAX_SPEED) {
-//            current_speed += SPEED_INCREMENT;
-//            lastSpeedIncreaseAt = score; // Ghi nhận lần tăng tốc này
-//            if (current_speed > MAX_SPEED) {
-//                current_speed = MAX_SPEED;
-//            }
-int lastSpeedIncreaseAt = 0;
-
-// Trong vòng lặp game, thay phần xử lý tăng tốc bằng:
-if (score >= lastSpeedIncreaseAt + SPEED_INCREASE_THRESHOLD) {
+if (score > 0 && score % SPEED_INCREASE_INTERVAL == 0 &&
+    donkey.y == -DONKEY_HEIGHT &&
+    current_speed < MAX_SPEED) {
     current_speed += SPEED_INCREMENT;
-    lastSpeedIncreaseAt = score;
-
-    // Giới hạn tốc độ tối đa
     if (current_speed > MAX_SPEED) {
         current_speed = MAX_SPEED;
     }
 }
-
             }
-
-
         coin.y += (int)current_speed;
         if (coin.y > SCREEN_HEIGHT) {
                 coin.x = (rand() % 2 == 0) ? (LEFT_LANE_CENTER - COIN_WIDTH / 2)
@@ -560,9 +539,9 @@ if (checkPreciseCollision(car, CAR_HITBOX, coin, COIN_HITBOX)) {
 
         }
 
-        if (score % SPEED_INCREASE_THRESHOLD == 0 && score != 0) {
-            current_speed += SPEED_INCREMENT;
-        }
+//        if (score % SPEED_INCREASE_INTERVAL == 0 && score != 0) {
+//            current_speed += SPEED_INCREMENT;
+//        }
 
 //        if (checkCollision(car, donkey)) {
 if (checkPreciseCollision(car, CAR_HITBOX, donkey, DONKEY_HITBOX)) {
@@ -621,4 +600,5 @@ int main(int argc, char* argv[]) {
     close();
     return 0;
 }
-// cai tien cho duong cuon len cho chan that voi xu li v
+// them phan co cuon xuong o to co the nhay qua trong 20 diem dau tien
+// xu li random sao cho lua va xu khong chong vao nhau
