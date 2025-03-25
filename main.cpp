@@ -5,6 +5,7 @@
 #include <iostream>
 #include <cstdlib>
 #include <ctime>
+#include <vector>
 using namespace std;
 
 const int SCREEN_WIDTH = 640;
@@ -17,17 +18,18 @@ const int COIN_WIDTH = 80;
 const int COIN_HEIGHT = 80;
 const int LEFT_LANE_CENTER = 160 + ((SCREEN_WIDTH - 320) / 4);
 const int RIGHT_LANE_CENTER = SCREEN_WIDTH / 2 + ((SCREEN_WIDTH - 320) / 4);
-
-
-float car_speed = 3.0f; // Giảm tốc độ ban đầu
-float donkey_speed = 3.0f;
-const float ACCELERATION = 0.0005f; // Giảm gia tốc
-const int SPEED_INCREASE_THRESHOLD = 10;
-const float SPEED_INCREMENT = 0.2f; // Giảm tốc độ tăng thêm
+const int ROAD_STRIP_HEIGHT = 40;
+const int NUM_ROAD_STRIPS = (SCREEN_HEIGHT / ROAD_STRIP_HEIGHT) + 2;
+const float base_speed = 1.0f;       // Tốc độ cơ bản
+float current_speed = base_speed;    // Tốc độ hiện tại
+const int SPEED_INCREASE_THRESHOLD = 10; // Cứ 10 điểm tăng tốc 1 lần
+const float SPEED_INCREMENT = 0.01f;  // Mỗi lần tăng 0.1 tốc độ
+const float MAX_SPEED = 7.0f;       // Tốc độ tối đa
 
 bool isJumping = false;
 const int JUMP_HEIGHT = 100;
 int jumpProgress = 0;
+float roadOffset = 0.0f;
 
 SDL_Window* window = NULL;
 SDL_Renderer* renderer = NULL;
@@ -48,13 +50,63 @@ Mix_Chunk* engineSound = nullptr;
 Mix_Chunk* startSound = nullptr;
 SDL_Rect car = {SCREEN_WIDTH / 2 - CAR_WIDTH / 2, SCREEN_HEIGHT - CAR_HEIGHT - 20, CAR_WIDTH, CAR_HEIGHT};
 SDL_Rect donkey = {rand() % 2 == 0 ? 160 : SCREEN_WIDTH / 2, -DONKEY_HEIGHT, DONKEY_WIDTH, DONKEY_HEIGHT};
-SDL_Rect coin = {rand() % (SCREEN_WIDTH - 320 - COIN_WIDTH) + 160, -COIN_HEIGHT, COIN_WIDTH, COIN_HEIGHT};
-//SDL_Rect car = {SCREEN_WIDTH / 4 - CAR_WIDTH / 2, SCREEN_HEIGHT - CAR_HEIGHT - 20, CAR_WIDTH, CAR_HEIGHT};
-//SDL_Rect donkey = {rand() % 2 == 0 ? SCREEN_WIDTH / 4 - DONKEY_WIDTH / 2 : (3 * SCREEN_WIDTH / 4 - DONKEY_WIDTH / 2), -DONKEY_HEIGHT, DONKEY_WIDTH, DONKEY_HEIGHT};
-//SDL_Rect coin = {rand() % 2 == 0 ? SCREEN_WIDTH / 4 - COIN_WIDTH / 2 : (3 * SCREEN_WIDTH / 4 - COIN_WIDTH / 2), -COIN_HEIGHT, COIN_WIDTH, COIN_HEIGHT};
+//SDL_Rect coin = {rand() % (SCREEN_WIDTH - 320 - COIN_WIDTH) + 160, -COIN_HEIGHT, COIN_WIDTH, COIN_HEIGHT};
+SDL_Rect coin = {
+    (rand() % 2 == 0) ? (LEFT_LANE_CENTER - COIN_WIDTH / 2) : (RIGHT_LANE_CENTER - COIN_WIDTH / 2),
+    -COIN_HEIGHT,
+    COIN_WIDTH,
+    COIN_HEIGHT
+};
 int goldCoins = 0;
 int lives = 0;
+// Thêm struct HitBox để quản lý vùng va chạm
+struct HitBox {
+    int x_offset; // Offset từ vị trí góc trái trên của object
+    int y_offset;
+    int width;
+    int height;
+};
 
+// Cập nhật các hằng số
+const HitBox CAR_HITBOX = {15, 20, CAR_WIDTH - 30, CAR_HEIGHT - 40};
+const HitBox DONKEY_HITBOX = {10, 15, DONKEY_WIDTH - 20, DONKEY_HEIGHT - 30};
+const HitBox COIN_HITBOX = {15, 15, COIN_WIDTH - 30, COIN_HEIGHT - 30};
+// Hàm kiểm tra va chạm chính xác hơn
+bool checkPreciseCollision(const SDL_Rect& object1, const HitBox& hitbox1,
+                          const SDL_Rect& object2, const HitBox& hitbox2) {
+    // Tính toán vị trí thực tế của hitbox
+    SDL_Rect rect1 = {
+        object1.x + hitbox1.x_offset,
+        object1.y + hitbox1.y_offset,
+        hitbox1.width,
+        hitbox1.height
+    };
+
+    SDL_Rect rect2 = {
+        object2.x + hitbox2.x_offset,
+        object2.y + hitbox2.y_offset,
+        hitbox2.width,
+        hitbox2.height
+    };
+    // Kiểm tra va chạm giữa các hitbox
+    return (rect1.x < rect2.x + rect2.w &&
+            rect1.x + rect1.w > rect2.x &&
+            rect1.y < rect2.y + rect2.h &&
+            rect1.y + rect1.h > rect2.y);
+}
+struct RoadStrip {
+    int y;
+    int height;
+};
+
+vector<RoadStrip> roadStrips;
+// Thay đổi trong phần khởi tạo coin (ở đầu file)
+//SDL_Rect coin = {
+//    (rand() % 2 == 0) ? (LEFT_LANE_CENTER - COIN_WIDTH / 2) : (RIGHT_LANE_CENTER - COIN_WIDTH / 2),
+//    -COIN_HEIGHT,
+//    COIN_WIDTH,
+//    COIN_HEIGHT
+//};
 SDL_Texture* loadTexture(const char* path) {
     SDL_Texture* texture = IMG_LoadTexture(renderer, path);
     if (!texture) {
@@ -84,36 +136,65 @@ bool init() {
     if (!renderer) {
         return false;
     }
+     for (int i = 0; i < NUM_ROAD_STRIPS; ++i) {
+        RoadStrip strip;
+        strip.y = i * ROAD_STRIP_HEIGHT;
+        strip.height = ROAD_STRIP_HEIGHT;
+        roadStrips.push_back(strip);
+    }
     return true;
 }
-
 void renderBackground() {
+
     SDL_SetRenderDrawColor(renderer, 194, 178, 128, 255);
     SDL_Rect leftPanel = {0, 0, 160, SCREEN_HEIGHT};
     SDL_Rect rightPanel = {SCREEN_WIDTH - 160, 0, 160, SCREEN_HEIGHT};
     SDL_RenderFillRect(renderer, &leftPanel);
     SDL_RenderFillRect(renderer, &rightPanel);
 
-    SDL_SetRenderDrawColor(renderer, 100, 100, 100, 255);
-    SDL_Rect road = {160, 0, SCREEN_WIDTH - 320, SCREEN_HEIGHT};
-    SDL_RenderFillRect(renderer, &road);
- // Vẽ phần màu gạch
-    SDL_SetRenderDrawColor(renderer, 178, 34, 34, 255); // Màu gạch
-    SDL_Rect brickLeft = {160, 0, 10, SCREEN_HEIGHT}; // Phần gạch bên trái
-    SDL_Rect brickRight = {SCREEN_WIDTH - 170, 0, 10, SCREEN_HEIGHT}; // Phần gạch bên phải
+    SDL_SetRenderDrawColor(renderer, 178, 34, 34, 255);
+    SDL_Rect brickLeft = {160, 0, 10, SCREEN_HEIGHT};
+    SDL_Rect brickRight = {SCREEN_WIDTH - 170, 0, 10, SCREEN_HEIGHT};
     SDL_RenderFillRect(renderer, &brickLeft);
     SDL_RenderFillRect(renderer, &brickRight);
+
     SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
     for (int i = 0; i < SCREEN_HEIGHT; i += 20) {
         SDL_RenderDrawLine(renderer, 160, i, 160 + 10, i);
         SDL_RenderDrawLine(renderer, SCREEN_WIDTH - 160 - 10, i, SCREEN_WIDTH - 160, i);
     }
 
-    for (int i = 0; i < SCREEN_HEIGHT; i += 40) {
-        SDL_RenderDrawLine(renderer, SCREEN_WIDTH / 2 - 5, i, SCREEN_WIDTH / 2 - 5, i + 20);
+    SDL_SetRenderDrawColor(renderer, 100, 100, 100, 255);
+    SDL_Rect road = {170, 0, SCREEN_WIDTH - 340, SCREEN_HEIGHT};
+    SDL_RenderFillRect(renderer, &road);
+
+    // Vẽ các vạch kẻ đường cuộn
+    SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
+    for (const auto& strip : roadStrips) {
+        if (strip.y + strip.height >= 0 && strip.y < SCREEN_HEIGHT) {
+            SDL_Rect line = {SCREEN_WIDTH / 2 - 5, strip.y, 10, strip.height / 2};
+            SDL_RenderFillRect(renderer, &line);
+        }
     }
 }
 
+void updateRoadStrips(float speed) {
+    roadOffset += speed;
+
+    // Cập nhật vị trí các đoạn đường kẻ
+    for (auto& strip : roadStrips) {
+        strip.y += (int)speed;
+
+        // Nếu đoạn đường kẻ đi qua màn hình, đặt lại phía trên
+        if (strip.y > SCREEN_HEIGHT) {
+            strip.y = -ROAD_STRIP_HEIGHT;
+        }
+    }
+
+    if (roadOffset >= ROAD_STRIP_HEIGHT) {
+        roadOffset -= ROAD_STRIP_HEIGHT;
+    }
+}
 void countdown() {
     Mix_HaltMusic();
     if (!font) {
@@ -237,6 +318,14 @@ bool loadMedia() {
     Mix_VolumeChunk(engineSound, MIX_MAX_VOLUME /8);
     startSound = Mix_LoadWAV("start.wav");
     if (!startSound) return false;
+//    // Thay thế grassTexture bằng mảng texture
+//for (int i = 0; i < GRASS_FRAMES; i++) {
+//    string path = "grass" + to_string(i+1) + ".png"; // Giả sử có 4 file grass_1.png đến grass_4.png
+//    grassTextures[i] = loadTexture(path.c_str());
+//    if (!grassTextures[i]) return false;
+//}
+//grassTexture = loadTexture("grass4.png");  // Thêm file grass.png vào thư mục assets
+//if (!grassTexture) return false;
     return true;
 }
 
@@ -264,9 +353,9 @@ void close() {
     SDL_Quit();
 }
 
-bool checkCollision(SDL_Rect a, SDL_Rect b) {
-    return (a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y);
-}
+//bool checkCollision(SDL_Rect a, SDL_Rect b) {
+//    return (a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y);
+//}
 
 void showExplosion(int x, int y) {
     SDL_Rect explosionRect = {x - 32, y - 32, 64, 64};
@@ -375,8 +464,9 @@ void gameLoop() {
     bool quit = false;
     SDL_Event e;
     int score = 0;
-    Uint32 startTime = SDL_GetTicks();
-
+current_speed = base_speed;
+//int lastSpeedIncreaseScore = 0;
+int lastSpeedIncreaseAt = -SPEED_INCREASE_THRESHOLD;
     while (!quit) {
         while (SDL_PollEvent(&e) != 0) {
             if (e.type == SDL_QUIT) {
@@ -411,11 +501,10 @@ void gameLoop() {
                 car.y = SCREEN_HEIGHT - CAR_HEIGHT - 20;
             }
         }
+  updateRoadStrips(current_speed);
+//        Uint32 currentTime = SDL_GetTicks();
 
-        Uint32 currentTime = SDL_GetTicks();
-        donkey_speed += ACCELERATION * ((currentTime - startTime) / 1000.0f);
-
-        donkey.y += (int)donkey_speed;
+        donkey.y += (int)current_speed;
         if (donkey.y > SCREEN_HEIGHT) {
                 donkey.x = (rand() % 2 == 0) ? (LEFT_LANE_CENTER - DONKEY_WIDTH / 2)
                              : (RIGHT_LANE_CENTER - DONKEY_WIDTH / 2);
@@ -423,30 +512,59 @@ void gameLoop() {
             donkey.y = -DONKEY_HEIGHT;
             score++;
              Mix_PlayChannel(-1, pointSound, 0);
-        }
+//              if (score % SPEED_INCREASE_THRESHOLD == 0 && current_speed < MAX_SPEED) {
+//                current_speed += SPEED_INCREMENT;
+////                lastSpeedIncreaseScore = score;
+//    if (current_speed > MAX_SPEED) {
+//        current_speed = MAX_SPEED;
+//    }
+// if (score >= lastSpeedIncreaseAt + SPEED_INCREASE_THRESHOLD && current_speed < MAX_SPEED) {
+//            current_speed += SPEED_INCREMENT;
+//            lastSpeedIncreaseAt = score; // Ghi nhận lần tăng tốc này
+//            if (current_speed > MAX_SPEED) {
+//                current_speed = MAX_SPEED;
+//            }
+int lastSpeedIncreaseAt = 0;
 
-        coin.y += (int)donkey_speed;
+// Trong vòng lặp game, thay phần xử lý tăng tốc bằng:
+if (score >= lastSpeedIncreaseAt + SPEED_INCREASE_THRESHOLD) {
+    current_speed += SPEED_INCREMENT;
+    lastSpeedIncreaseAt = score;
+
+    // Giới hạn tốc độ tối đa
+    if (current_speed > MAX_SPEED) {
+        current_speed = MAX_SPEED;
+    }
+}
+
+            }
+
+
+        coin.y += (int)current_speed;
         if (coin.y > SCREEN_HEIGHT) {
                 coin.x = (rand() % 2 == 0) ? (LEFT_LANE_CENTER - COIN_WIDTH / 2)
                            : (RIGHT_LANE_CENTER - COIN_WIDTH / 2);
             coin.y = -COIN_HEIGHT;
         }
 
-        if (checkCollision(car, coin)) {
+//        if (checkCollision(car, coin)) {
+if (checkPreciseCollision(car, CAR_HITBOX, coin, COIN_HITBOX)) {
             goldCoins++;
             if (goldCoins % 5 == 0) {
                 lives++;
             }
-            coin.x = rand() % (SCREEN_WIDTH - 320 - COIN_WIDTH) + 160;
+           coin.x = (rand() % 2 == 0) ? (LEFT_LANE_CENTER - COIN_WIDTH / 2)
+                               : (RIGHT_LANE_CENTER - COIN_WIDTH / 2);
             coin.y = -COIN_HEIGHT;
 
         }
 
         if (score % SPEED_INCREASE_THRESHOLD == 0 && score != 0) {
-            donkey_speed += SPEED_INCREMENT;
+            current_speed += SPEED_INCREMENT;
         }
 
-        if (checkCollision(car, donkey)) {
+//        if (checkCollision(car, donkey)) {
+if (checkPreciseCollision(car, CAR_HITBOX, donkey, DONKEY_HITBOX)) {
             if (lives > 0) {
                 lives--;
                 donkey.x = rand() % 2 == 0 ? 160 : SCREEN_WIDTH / 2;
@@ -465,8 +583,7 @@ void gameLoop() {
                     score = 0;
                     goldCoins = 0;
                     lives = 0;
-                    donkey_speed = 3.0f;
-                    startTime = SDL_GetTicks();
+                    current_speed = 3.0f;
                     Mix_PlayChannel(-1, engineSound, -1);
                 } else {
                     quit = true;
@@ -482,11 +599,8 @@ void gameLoop() {
         SDL_RenderCopy(renderer, donkeyTexture, NULL, &donkey);
         SDL_RenderCopy(renderer, coinTexture, NULL, &coin);
         SDL_RenderPresent(renderer);
-
-        SDL_Delay(16);
     }
 }
-
 int main(int argc, char* argv[]) {
     srand(time(NULL));
 
@@ -506,3 +620,4 @@ int main(int argc, char* argv[]) {
     close();
     return 0;
 }
+// cai tien cho duong cuon len cho chan that voi xu li v
