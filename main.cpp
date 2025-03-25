@@ -6,6 +6,7 @@
 #include <cstdlib>
 #include <ctime>
 #include <vector>
+
 using namespace std;
 
 const int SCREEN_WIDTH = 640;
@@ -352,7 +353,7 @@ void close() {
     Mix_Quit();
     SDL_Quit();
 }
-
+//
 //bool checkCollision(SDL_Rect a, SDL_Rect b) {
 //    return (a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y);
 //}
@@ -466,7 +467,7 @@ void gameLoop() {
     int score = 0;
 current_speed = base_speed;
 //int lastSpeedIncreaseScore = 0;
-int lastSpeedIncreaseAt = -SPEED_INCREASE_THRESHOLD;
+//int lastSpeedIncreaseAt = -SPEED_INCREASE_THRESHOLD;
     while (!quit) {
         while (SDL_PollEvent(&e) != 0) {
             if (e.type == SDL_QUIT) {
