@@ -6,6 +6,8 @@
 #include <cstdlib>
 #include <ctime>
 #include <vector>
+#include <fstream>
+#include <sstream>
 
 using namespace std;
 
@@ -17,6 +19,10 @@ const int DONKEY_WIDTH = 90;
 const int DONKEY_HEIGHT = 120;
 const int COIN_WIDTH = 80;
 const int COIN_HEIGHT = 80;
+const int GRASS_WIDTH = 30;
+const int GRASS_HEIGHT = 30;
+const int GRASS_FRAMES = 4;
+const int GRASS_SPAWN_CHANCE = 1;
 const int LEFT_LANE_CENTER = 160 + ((SCREEN_WIDTH - 320) / 4);
 const int RIGHT_LANE_CENTER = SCREEN_WIDTH / 2 + ((SCREEN_WIDTH - 320) / 4);
 const int ROAD_STRIP_HEIGHT = 40;
@@ -27,10 +33,21 @@ const int SPEED_INCREASE_INTERVAL = 10;
 const float SPEED_INCREMENT = 0.5f;
 const float MAX_SPEED = 7.0f;
 bool isJumping = false;
-const int JUMP_HEIGHT = 100;
+const int JUMP_HEIGHT = 200;
+const float JUMP_SPEED = 7.0f;
+const int MAX_JUMPS = 2;
+int jumpsRemaining = MAX_JUMPS;
+float jumpVelocity = 0.0f;
+bool isOnGround = true;
+const string HIGHSCORE_FILE = "highscore.txt";
+const int BRICK_WIDTH = 10;
+const int BRICK_HEIGHT = 20;
+const int NUM_BRICK_ROWS = (SCREEN_HEIGHT / BRICK_HEIGHT) + 2;
+
 int jumpProgress = 0;
 float roadOffset = 0.0f;
-
+const int GRASS_SPAWN_INTERVAL = 120; // frames
+int grassSpawnTimer = 0;
 SDL_Window* window = NULL;
 SDL_Renderer* renderer = NULL;
 SDL_Texture* carTexture = NULL;
@@ -38,6 +55,7 @@ SDL_Texture* donkeyTexture = NULL;
 SDL_Texture* coinTexture = NULL;
 SDL_Texture* explosionTexture = NULL;
 SDL_Texture* introTexture = NULL;
+SDL_Texture* grassTextures[GRASS_FRAMES];
 TTF_Font* font = NULL;
 Mix_Music* introMusic = NULL;
 Mix_Chunk* pointSound = NULL;
@@ -48,33 +66,65 @@ Mix_Chunk* countdown1Sound = nullptr;
 Mix_Chunk* countdownStartSound = nullptr;
 Mix_Chunk* engineSound = nullptr;
 Mix_Chunk* startSound = nullptr;
+Mix_Chunk* grassSound = nullptr;
+
 SDL_Rect car = {SCREEN_WIDTH / 2 - CAR_WIDTH / 2, SCREEN_HEIGHT - CAR_HEIGHT - 20, CAR_WIDTH, CAR_HEIGHT};
 SDL_Rect donkey = {rand() % 2 == 0 ? 160 : SCREEN_WIDTH / 2, -DONKEY_HEIGHT, DONKEY_WIDTH, DONKEY_HEIGHT};
-//SDL_Rect coin = {rand() % (SCREEN_WIDTH - 320 - COIN_WIDTH) + 160, -COIN_HEIGHT, COIN_WIDTH, COIN_HEIGHT};
 SDL_Rect coin = {
     (rand() % 2 == 0) ? (LEFT_LANE_CENTER - COIN_WIDTH / 2) : (RIGHT_LANE_CENTER - COIN_WIDTH / 2),
     -COIN_HEIGHT,
     COIN_WIDTH,
     COIN_HEIGHT
 };
+struct BrickRow {
+    int y;
+    bool hasLine; // Có vạch kẻ ngang hay không
+};
+
+vector<BrickRow> leftBrickRows;
+vector<BrickRow> rightBrickRows;
+struct Grass {
+    SDL_Rect rect;
+    int frame;
+    int frameCounter;
+    bool active;
+    bool scored;
+    bool isDangerous; // Luôn true trong phiên bản mới
+};
+
+vector<Grass> grasses;
 int goldCoins = 0;
 int lives = 0;
-// Thêm struct HitBox để quản lý vùng va chạm
+// Thêm struct để quản lý vùng cấm
+struct ForbiddenZone {
+    SDL_Rect rect;
+    int framesRemaining; // Số frame còn tồn tại
+};
+
+vector<ForbiddenZone> forbiddenZones;
+
+// Hàm kiểm tra vùng có an toàn để spawn
+bool isSafeToSpawn(const SDL_Rect& newObj) {
+    for (const auto& zone : forbiddenZones) {
+        if (SDL_HasIntersection(&newObj, &zone.rect)) {
+            return false;
+        }
+    }
+    return true;
+}
 struct HitBox {
-    int x_offset; // Offset từ vị trí góc trái trên của object
+    int x_offset;
     int y_offset;
     int width;
     int height;
 };
 
-// Cập nhật các hằng số
 const HitBox CAR_HITBOX = {15, 20, CAR_WIDTH - 30, CAR_HEIGHT - 40};
 const HitBox DONKEY_HITBOX = {10, 15, DONKEY_WIDTH - 20, DONKEY_HEIGHT - 30};
 const HitBox COIN_HITBOX = {15, 15, COIN_WIDTH - 30, COIN_HEIGHT - 30};
-// Hàm kiểm tra va chạm chính xác hơn
+const HitBox GRASS_HITBOX = {5, 5, GRASS_WIDTH - 10, GRASS_HEIGHT - 10};
 bool checkPreciseCollision(const SDL_Rect& object1, const HitBox& hitbox1,
                           const SDL_Rect& object2, const HitBox& hitbox2) {
-    // Tính toán vị trí thực tế của hitbox
     SDL_Rect rect1 = {
         object1.x + hitbox1.x_offset,
         object1.y + hitbox1.y_offset,
@@ -88,25 +138,20 @@ bool checkPreciseCollision(const SDL_Rect& object1, const HitBox& hitbox1,
         hitbox2.width,
         hitbox2.height
     };
-    // Kiểm tra va chạm giữa các hitbox
+
     return (rect1.x < rect2.x + rect2.w &&
             rect1.x + rect1.w > rect2.x &&
             rect1.y < rect2.y + rect2.h &&
             rect1.y + rect1.h > rect2.y);
 }
+
 struct RoadStrip {
     int y;
     int height;
 };
 
 vector<RoadStrip> roadStrips;
-// Thay đổi trong phần khởi tạo coin (ở đầu file)
-//SDL_Rect coin = {
-//    (rand() % 2 == 0) ? (LEFT_LANE_CENTER - COIN_WIDTH / 2) : (RIGHT_LANE_CENTER - COIN_WIDTH / 2),
-//    -COIN_HEIGHT,
-//    COIN_WIDTH,
-//    COIN_HEIGHT
-//};
+
 SDL_Texture* loadTexture(const char* path) {
     SDL_Texture* texture = IMG_LoadTexture(renderer, path);
     if (!texture) {
@@ -114,7 +159,23 @@ SDL_Texture* loadTexture(const char* path) {
     }
     return texture;
 }
+int readHighScore() {
+    ifstream file(HIGHSCORE_FILE);
+    int highScore = 0;
+    if (file.is_open()) {
+        file >> highScore;
+        file.close();
+    }
+    return highScore;
+}
 
+void writeHighScore(int score) {
+    ofstream file(HIGHSCORE_FILE);
+    if (file.is_open()) {
+        file << score;
+        file.close();
+    }
+}
 bool init() {
     if (SDL_Init(SDL_INIT_VIDEO) < 0) {
         return false;
@@ -122,7 +183,7 @@ bool init() {
     if (!(IMG_Init(IMG_INIT_PNG) & IMG_INIT_PNG)) {
         return false;
     }
-     if (Mix_OpenAudio(44100, MIX_DEFAULT_FORMAT, 2, 2048) < 0) {
+    if (Mix_OpenAudio(44100, MIX_DEFAULT_FORMAT, 2, 2048) < 0) {
         return false;
     }
     if (TTF_Init() == -1) {
@@ -136,39 +197,101 @@ bool init() {
     if (!renderer) {
         return false;
     }
-     for (int i = 0; i < NUM_ROAD_STRIPS; ++i) {
+    for (int i = 0; i < NUM_ROAD_STRIPS; ++i) {
         RoadStrip strip;
         strip.y = i * ROAD_STRIP_HEIGHT;
         strip.height = ROAD_STRIP_HEIGHT;
         roadStrips.push_back(strip);
     }
+     // Khởi tạo các hàng gạch trái
+    for (int i = 0; i < NUM_BRICK_ROWS; ++i) {
+        BrickRow row;
+        row.y = i * BRICK_HEIGHT;
+        row.hasLine = (i % 2 == 0); // Mỗi 2 hàng có 1 vạch kẻ
+        leftBrickRows.push_back(row);
+    }
+
+    // Khởi tạo các hàng gạch phải
+    for (int i = 0; i < NUM_BRICK_ROWS; ++i) {
+        BrickRow row;
+        row.y = i * BRICK_HEIGHT;
+        row.hasLine = (i % 2 == 0); // Mỗi 2 hàng có 1 vạch kẻ
+        rightBrickRows.push_back(row);
+    }
     return true;
 }
-void renderBackground() {
+// Hàm cập nhật vị trí các hàng gạch
+void updateBrickRows(float speed) {
+    // Cập nhật hàng gạch trái
+    for (auto& row : leftBrickRows) {
+        row.y += (int)speed;
+        if (row.y > SCREEN_HEIGHT) {
+            row.y = -BRICK_HEIGHT;
+            row.hasLine = !row.hasLine; // Đảo trạng thái vạch kẻ khi quay lại
+        }
+    }
 
+    // Cập nhật hàng gạch phải
+    for (auto& row : rightBrickRows) {
+        row.y += (int)speed;
+        if (row.y > SCREEN_HEIGHT) {
+            row.y = -BRICK_HEIGHT;
+            row.hasLine = !row.hasLine; // Đảo trạng thái vạch kẻ khi quay lại
+        }
+    }
+}
+
+void renderBackground() {
+    // Vẽ nền hai bên đường đua (màu be)
     SDL_SetRenderDrawColor(renderer, 194, 178, 128, 255);
     SDL_Rect leftPanel = {0, 0, 160, SCREEN_HEIGHT};
     SDL_Rect rightPanel = {SCREEN_WIDTH - 160, 0, 160, SCREEN_HEIGHT};
     SDL_RenderFillRect(renderer, &leftPanel);
     SDL_RenderFillRect(renderer, &rightPanel);
 
-    SDL_SetRenderDrawColor(renderer, 178, 34, 34, 255);
-    SDL_Rect brickLeft = {160, 0, 10, SCREEN_HEIGHT};
-    SDL_Rect brickRight = {SCREEN_WIDTH - 170, 0, 10, SCREEN_HEIGHT};
-    SDL_RenderFillRect(renderer, &brickLeft);
-    SDL_RenderFillRect(renderer, &brickRight);
+    // Vẽ tường gạch di chuyển bên trái
+    for (const auto& row : leftBrickRows) {
+        if (row.y + BRICK_HEIGHT >= 0 && row.y < SCREEN_HEIGHT) {
+            // Vẽ viên gạch chính
+            SDL_SetRenderDrawColor(renderer, 178, 34, 34, 255); // Màu đỏ gạch
+            SDL_Rect brickRect = {160, row.y, BRICK_WIDTH, BRICK_HEIGHT};
+            SDL_RenderFillRect(renderer, &brickRect);
 
-    SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
-    for (int i = 0; i < SCREEN_HEIGHT; i += 20) {
-        SDL_RenderDrawLine(renderer, 160, i, 160 + 10, i);
-        SDL_RenderDrawLine(renderer, SCREEN_WIDTH - 160 - 10, i, SCREEN_WIDTH - 160, i);
+            // Vẽ hoa văn trên gạch (vạch ngang trắng)
+            if (row.hasLine) {
+                SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
+                SDL_RenderDrawLine(renderer,
+                                  160, row.y + BRICK_HEIGHT/2,
+                                  160 + BRICK_WIDTH, row.y + BRICK_HEIGHT/2);
+            }
+        }
     }
 
+    // Vẽ tường gạch di chuyển bên phải
+    for (const auto& row : rightBrickRows) {
+        if (row.y + BRICK_HEIGHT >= 0 && row.y < SCREEN_HEIGHT) {
+            // Vẽ viên gạch chính
+            SDL_SetRenderDrawColor(renderer, 178, 34, 34, 255); // Màu đỏ gạch
+            SDL_Rect brickRect = {SCREEN_WIDTH - 170, row.y, BRICK_WIDTH, BRICK_HEIGHT};
+            SDL_RenderFillRect(renderer, &brickRect);
+
+            // Vẽ hoa văn trên gạch (vạch ngang trắng)
+            if (row.hasLine) {
+                SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
+                SDL_RenderDrawLine(renderer,
+                                  SCREEN_WIDTH - 170, row.y + BRICK_HEIGHT/2,
+                                  SCREEN_WIDTH - 170 + BRICK_WIDTH, row.y + BRICK_HEIGHT/2);
+            }
+        }
+    }
+
+
+    // Vẽ mặt đường chính (màu xám)
     SDL_SetRenderDrawColor(renderer, 100, 100, 100, 255);
     SDL_Rect road = {170, 0, SCREEN_WIDTH - 340, SCREEN_HEIGHT};
     SDL_RenderFillRect(renderer, &road);
 
-    // Vẽ các vạch kẻ đường cuộn
+    // Vẽ vạch kẻ đường giữa (di chuyển)
     SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
     for (const auto& strip : roadStrips) {
         if (strip.y + strip.height >= 0 && strip.y < SCREEN_HEIGHT) {
@@ -177,15 +300,12 @@ void renderBackground() {
         }
     }
 }
-
 void updateRoadStrips(float speed) {
     roadOffset += speed;
 
-    // Cập nhật vị trí các đoạn đường kẻ
     for (auto& strip : roadStrips) {
         strip.y += (int)speed;
 
-        // Nếu đoạn đường kẻ đi qua màn hình, đặt lại phía trên
         if (strip.y > SCREEN_HEIGHT) {
             strip.y = -ROAD_STRIP_HEIGHT;
         }
@@ -195,30 +315,28 @@ void updateRoadStrips(float speed) {
         roadOffset -= ROAD_STRIP_HEIGHT;
     }
 }
+
 void countdown() {
     Mix_HaltMusic();
-    if (!font) {
-        font = TTF_OpenFont("Arial.ttf", 64); // Đảm bảo font được tải với kích thước 64
-        if (!font) {
-            cout << "Failed to load font! SDL_ttf Error: " << TTF_GetError() << endl;
-            return;
-        }
+TTF_Font* countdownFont = TTF_OpenFont("comic.ttf", 80); // Dùng biến cục bộ
+    if (!countdownFont) {
+        cout << "Failed to load countdown font! SDL_ttf Error: " << TTF_GetError() << endl;
+        return;
     }
-
     for (int i = 3; i > 0; --i) {
         SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
         SDL_RenderClear(renderer);
 
         string countText = to_string(i);
         SDL_Color textColor = {255, 255, 255, 255};
-        SDL_Surface* textSurface = TTF_RenderText_Solid(font, countText.c_str(), textColor);
+        SDL_Surface* textSurface = TTF_RenderText_Solid(countdownFont, countText.c_str(), textColor);
         SDL_Texture* textTexture = SDL_CreateTextureFromSurface(renderer, textSurface);
         SDL_Rect textRect = {SCREEN_WIDTH / 2 - textSurface->w / 2, SCREEN_HEIGHT / 2 - textSurface->h / 2, textSurface->w, textSurface->h};
         SDL_RenderCopy(renderer, textTexture, NULL, &textRect);
 
         SDL_FreeSurface(textSurface);
         SDL_DestroyTexture(textTexture);
-            switch (i) {
+        switch (i) {
             case 3:
                 Mix_PlayChannel(-1, countdown3Sound, 0);
                 break;
@@ -231,16 +349,15 @@ void countdown() {
         }
 
         SDL_RenderPresent(renderer);
-        SDL_Delay(1000); // Chờ 1 giây
+        SDL_Delay(1000);
     }
 
-    // Hiển thị "Start!"
     SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
     SDL_RenderClear(renderer);
 
     string startText = "Start!!!";
     SDL_Color textColor = {255, 255, 255, 255};
-    SDL_Surface* textSurface = TTF_RenderText_Solid(font, startText.c_str(), textColor);
+    SDL_Surface* textSurface = TTF_RenderText_Solid(countdownFont, startText.c_str(), textColor);
     SDL_Texture* textTexture = SDL_CreateTextureFromSurface(renderer, textSurface);
     SDL_Rect textRect = {SCREEN_WIDTH / 2 - textSurface->w / 2, SCREEN_HEIGHT / 2 - textSurface->h / 2, textSurface->w, textSurface->h};
     SDL_RenderCopy(renderer, textTexture, NULL, &textRect);
@@ -250,42 +367,93 @@ void countdown() {
     Mix_PlayChannel(-1, startSound, 0);
     Mix_PlayChannel(-1, engineSound, -1);
     SDL_RenderPresent(renderer);
-    SDL_Delay(500); // Chờ 0.5 giây
+    SDL_Delay(500);
 }
+void renderScore(int score, int goldCoins, int lives, int highScore) {
+    TTF_Font* normalFont = TTF_OpenFont("arial.ttf", 24);
+    TTF_Font* smallFont = TTF_OpenFont("arial.ttf", 18);
+    if (!normalFont) normalFont = TTF_OpenFont("arial.ttf", 24);
+    if (!smallFont) smallFont = normalFont;
 
-void renderScore(int score, int goldCoins, int lives) {
-    if (!font) {
-        font = TTF_OpenFont("arial.ttf", 24);
-        if (!font) {
-            return;
-        }
-    }
-    string scoreText = "Score: " + to_string(score);
     SDL_Color textColor = {255, 255, 255, 255};
-    SDL_Surface* textSurface = TTF_RenderText_Solid(font, scoreText.c_str(), textColor);
+
+    // Hiển thị score hiện tại (cỡ chữ bình thường)
+    string scoreText = "Score: " + to_string(score);
+    SDL_Surface* textSurface = TTF_RenderText_Solid(normalFont, scoreText.c_str(), textColor);
     SDL_Texture* textTexture = SDL_CreateTextureFromSurface(renderer, textSurface);
     SDL_Rect textRect = {20, 20, textSurface->w, textSurface->h};
     SDL_RenderCopy(renderer, textTexture, NULL, &textRect);
     SDL_FreeSurface(textSurface);
     SDL_DestroyTexture(textTexture);
 
+    // Hiển thị high score (cỡ chữ nhỏ hơn)
+    string highScoreText = "High Score: " + to_string(highScore);
+    textSurface = TTF_RenderText_Solid(smallFont, highScoreText.c_str(), textColor);
+    textTexture = SDL_CreateTextureFromSurface(renderer, textSurface);
+    textRect = {20, 50, textSurface->w, textSurface->h};
+    SDL_RenderCopy(renderer, textTexture, NULL, &textRect);
+    SDL_FreeSurface(textSurface);
+    SDL_DestroyTexture(textTexture);
+
+    // Hiển thị gold coins (cỡ chữ bình thường)
     string coinText = "Gold: " + to_string(goldCoins);
-    textSurface = TTF_RenderText_Solid(font, coinText.c_str(), textColor);
+    textSurface = TTF_RenderText_Solid(normalFont, coinText.c_str(), textColor);
     textTexture = SDL_CreateTextureFromSurface(renderer, textSurface);
     textRect = {SCREEN_WIDTH - 150, 20, textSurface->w, textSurface->h};
     SDL_RenderCopy(renderer, textTexture, NULL, &textRect);
     SDL_FreeSurface(textSurface);
     SDL_DestroyTexture(textTexture);
 
+    // Hiển thị lives (cỡ chữ bình thường)
     string livesText = "Lives: " + to_string(lives);
-    textSurface = TTF_RenderText_Solid(font, livesText.c_str(), textColor);
+    textSurface = TTF_RenderText_Solid(normalFont, livesText.c_str(), textColor);
     textTexture = SDL_CreateTextureFromSurface(renderer, textSurface);
     textRect = {SCREEN_WIDTH / 2 - textSurface->w / 2, 20, textSurface->w, textSurface->h};
     SDL_RenderCopy(renderer, textTexture, NULL, &textRect);
     SDL_FreeSurface(textSurface);
     SDL_DestroyTexture(textTexture);
-}
 
+    // Đóng các font đã mở - QUAN TRỌNG: không đóng font nếu nó là font fallback
+    if (smallFont != normalFont) {
+        TTF_CloseFont(smallFont);
+    }
+    if (normalFont != font) {  // So sánh với font toàn cục nếu có
+        TTF_CloseFont(normalFont);
+    }
+}
+void showNewRecordEffect(SDL_Renderer* renderer, TTF_Font* font) {
+    // Hiển thị trong 2 giây
+    Uint32 startTime = SDL_GetTicks();
+    while (SDL_GetTicks() - startTime < 2000) {
+        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 150);
+        SDL_Rect overlay = {0, 0, SCREEN_WIDTH, SCREEN_HEIGHT};
+        SDL_RenderFillRect(renderer, &overlay);
+
+        string recordText = "NEW HIGH SCORE!";
+        SDL_Color color = {255, 215, 0, 255}; // Màu vàng
+        SDL_Surface* surface = TTF_RenderText_Solid(font, recordText.c_str(), color);
+        SDL_Texture* texture = SDL_CreateTextureFromSurface(renderer, surface);
+        SDL_Rect rect = {
+            SCREEN_WIDTH/2 - surface->w/2,
+            SCREEN_HEIGHT/2 - surface->h/2,
+            surface->w,
+            surface->h
+        };
+        SDL_RenderCopy(renderer, texture, NULL, &rect);
+
+        SDL_RenderPresent(renderer);
+        SDL_FreeSurface(surface);
+        SDL_DestroyTexture(texture);
+
+        // Vẫn xử lý sự kiện để game không bị đơ
+        SDL_Event e;
+        while (SDL_PollEvent(&e)) {
+            if (e.type == SDL_QUIT) {
+                return;
+            }
+        }
+    }
+}
 bool loadMedia() {
     carTexture = loadTexture("oto.png");
     if (!carTexture) return false;
@@ -301,31 +469,34 @@ bool loadMedia() {
 
     introTexture = loadTexture("intro2.jpg");
     if (!introTexture) return false;
-        introMusic = Mix_LoadMUS("amthanhintro.mp3");
+
+    // Load grass textures
+    for (int i = 0; i < GRASS_FRAMES; i++) {
+        string path = "grass" + to_string(i+1) + ".png";
+        grassTextures[i] = loadTexture(path.c_str());
+        if (!grassTextures[i]) return false;
+    }
+
+    introMusic = Mix_LoadMUS("amthanhintro.mp3");
     if (!introMusic) return false;
-     pointSound = Mix_LoadWAV("amthanhkhitinh1diem.wav");
+    pointSound = Mix_LoadWAV("amthanhkhitinh1diem.wav");
     if (!pointSound) return false;
-        collisionSound = Mix_LoadWAV("vacham.wav");
+    collisionSound = Mix_LoadWAV("vacham.wav");
     if (!collisionSound) return false;
-     countdown3Sound = Mix_LoadWAV("3.wav");
+    countdown3Sound = Mix_LoadWAV("3.wav");
     if (!countdown3Sound) return false;
-     countdown2Sound = Mix_LoadWAV("2.wav");
+    countdown2Sound = Mix_LoadWAV("2.wav");
     if (!countdown2Sound) return false;
-     countdown1Sound = Mix_LoadWAV("1.wav");
+    countdown1Sound = Mix_LoadWAV("1.wav");
     if (!countdown3Sound) return false;
-     engineSound = Mix_LoadWAV("dongco.wav");
+    engineSound = Mix_LoadWAV("dongco.wav");
     if (!engineSound) return false;
     Mix_VolumeChunk(engineSound, MIX_MAX_VOLUME /8);
     startSound = Mix_LoadWAV("start.wav");
     if (!startSound) return false;
-//    // Thay thế grassTexture bằng mảng texture
-//for (int i = 0; i < GRASS_FRAMES; i++) {
-//    string path = "grass" + to_string(i+1) + ".png"; // Giả sử có 4 file grass_1.png đến grass_4.png
-//    grassTextures[i] = loadTexture(path.c_str());
-//    if (!grassTextures[i]) return false;
-//}
-//grassTexture = loadTexture("grass4.png");  // Thêm file grass.png vào thư mục assets
-//if (!grassTexture) return false;
+    grassSound = Mix_LoadWAV("grass.wav"); // Thêm âm thanh khi nhảy qua cỏ
+    if (!grassSound) return false;
+
     return true;
 }
 
@@ -335,6 +506,9 @@ void close() {
     SDL_DestroyTexture(coinTexture);
     SDL_DestroyTexture(explosionTexture);
     SDL_DestroyTexture(introTexture);
+    for (int i = 0; i < GRASS_FRAMES; i++) {
+        SDL_DestroyTexture(grassTextures[i]);
+    }
     TTF_CloseFont(font);
     SDL_DestroyRenderer(renderer);
     SDL_DestroyWindow(window);
@@ -346,16 +520,12 @@ void close() {
     Mix_FreeChunk(countdown1Sound);
     Mix_FreeChunk(engineSound);
     Mix_FreeChunk(startSound);
+    Mix_FreeChunk(grassSound);
     TTF_Quit();
     IMG_Quit();
     SDL_Quit();
     Mix_Quit();
-    SDL_Quit();
 }
-//
-//bool checkCollision(SDL_Rect a, SDL_Rect b) {
-//    return (a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y);
-//}
 
 void showExplosion(int x, int y) {
     SDL_Rect explosionRect = {x - 32, y - 32, 64, 64};
@@ -390,7 +560,7 @@ void showIntro() {
     while (!quit) {
         while (SDL_PollEvent(&e) != 0) {
             if (e.type == SDL_QUIT) {
-                    Mix_HaltMusic();
+                Mix_HaltMusic();
                 quit = true;
                 exit(0);
             } else if (e.type == SDL_KEYDOWN) {
@@ -459,26 +629,190 @@ bool showGameOver(int score, int goldCoins) {
     }
     return false;
 }
+void spawnGrass() {
+    if (rand() % 1000 >= GRASS_SPAWN_CHANCE) return;
 
+    SDL_Rect newGrass;
+    newGrass.w = GRASS_WIDTH;
+    newGrass.h = GRASS_HEIGHT;
+    newGrass.y = -GRASS_HEIGHT;
+
+    int attempts = 0;
+    const int MAX_ATTEMPTS = 5;
+
+    do {
+        newGrass.x = (rand() % 2 == 0) ? (LEFT_LANE_CENTER - GRASS_WIDTH / 2)
+                                      : (RIGHT_LANE_CENTER - GRASS_WIDTH / 2);
+        attempts++;
+
+        if (attempts >= MAX_ATTEMPTS) {
+            return;
+        }
+    } while (!isSafeToSpawn(newGrass));
+
+    Grass grass;
+    grass.rect = newGrass;
+    grass.frame = 0;
+    grass.frameCounter = 0;
+    grass.active = true;
+    grass.scored = false;
+    grass.isDangerous = true;
+    grasses.push_back(grass);
+
+    // Thêm vùng cấm
+    ForbiddenZone zone;
+    zone.rect = {grass.rect.x - 10, grass.rect.y - 10,
+                GRASS_WIDTH + 20, GRASS_HEIGHT + 30};
+    zone.framesRemaining = 60; // Cấm trong 60 frames
+    forbiddenZones.push_back(zone);
+}
+void spawnDonkey() {
+    SDL_Rect newDonkey;
+    newDonkey.w = DONKEY_WIDTH;
+    newDonkey.h = DONKEY_HEIGHT;
+    newDonkey.y = -DONKEY_HEIGHT;
+
+    int attempts = 0;
+    const int MAX_ATTEMPTS = 10;
+
+    do {
+        newDonkey.x = (rand() % 2 == 0) ? (LEFT_LANE_CENTER - DONKEY_WIDTH / 2)
+                                       : (RIGHT_LANE_CENTER - DONKEY_WIDTH / 2);
+        attempts++;
+
+        if (attempts >= MAX_ATTEMPTS) {
+            return; // Không spawn nếu không tìm được vị trí
+        }
+    } while (!isSafeToSpawn(newDonkey));
+
+    donkey = newDonkey;
+
+    // Thêm vùng cấm xung quanh lừa
+    ForbiddenZone zone;
+    zone.rect = {donkey.x - 20, donkey.y - 20,
+                DONKEY_WIDTH + 40, DONKEY_HEIGHT + 100};
+    zone.framesRemaining = 120;
+    forbiddenZones.push_back(zone);
+}
+
+void spawnCoin() {
+    SDL_Rect newCoin;
+    newCoin.w = COIN_WIDTH;
+    newCoin.h = COIN_HEIGHT;
+    newCoin.y = -COIN_HEIGHT;
+
+    int attempts = 0;
+    const int MAX_ATTEMPTS = 10;
+
+    do {
+        newCoin.x = (rand() % 2 == 0) ? (LEFT_LANE_CENTER - COIN_WIDTH / 2)
+                                     : (RIGHT_LANE_CENTER - COIN_WIDTH / 2);
+        attempts++;
+
+        if (attempts >= MAX_ATTEMPTS) {
+            return; // Không spawn nếu không tìm được vị trí
+        }
+    } while (!isSafeToSpawn(newCoin));
+
+    coin = newCoin;
+
+    // Thêm vùng cấm xung quanh xu
+    ForbiddenZone zone;
+    zone.rect = {coin.x - 15, coin.y - 15,
+                COIN_WIDTH + 30, COIN_HEIGHT + 50};
+    zone.framesRemaining = 90;
+    forbiddenZones.push_back(zone);
+}
+
+void updateForbiddenZones() {
+    for (size_t i = 0; i < forbiddenZones.size(); ) {
+        forbiddenZones[i].framesRemaining--;
+        if (forbiddenZones[i].framesRemaining <= 0) {
+            forbiddenZones.erase(forbiddenZones.begin() + i);
+        } else {
+            i++;
+        }
+    }
+}
+void handleInput() {
+    const Uint8* keystates = SDL_GetKeyboardState(NULL);
+
+    if (keystates[SDL_SCANCODE_LEFT]) {
+        car.x = LEFT_LANE_CENTER - CAR_WIDTH / 2;
+    }
+    else if (keystates[SDL_SCANCODE_RIGHT]) {
+        car.x = RIGHT_LANE_CENTER - CAR_WIDTH / 2;
+    }
+
+    if (keystates[SDL_SCANCODE_UP] && jumpsRemaining > 0) {
+        if (isOnGround || jumpsRemaining == MAX_JUMPS) {
+            isJumping = true;
+            isOnGround = false;
+            jumpVelocity = JUMP_SPEED;
+            jumpsRemaining--;
+           // Mix_PlayChannel(-1, jumpSound, 0); // Thêm âm thanh nhảy
+        }
+    }
+}
+
+void updateGrasses(int score) {
+    for (size_t i = 0; i < grasses.size(); ) {
+        grasses[i].rect.y += (int)current_speed;
+
+        // Làm chậm animation (thay đổi frame mỗi 15 frames thay vì 10)
+        grasses[i].frameCounter++;
+        if (grasses[i].frameCounter >= 15) {
+            grasses[i].frame = (grasses[i].frame + 1) % GRASS_FRAMES;
+            grasses[i].frameCounter = 0;
+        }
+
+        if (grasses[i].rect.y > SCREEN_HEIGHT) {
+            grasses.erase(grasses.begin() + i);
+        } else {
+            if (checkPreciseCollision(car, CAR_HITBOX, grasses[i].rect, GRASS_HITBOX)) {
+                if (isJumping && !grasses[i].scored ) {
+                    grasses[i].scored = true;
+                    Mix_PlayChannel(-1, grassSound, 0);
+                    score++;
+                } else if (!isJumping ) {
+                    goldCoins = max(0, goldCoins - 2);
+                    grasses.erase(grasses.begin() + i);
+                    continue;
+                }
+            }
+            i++;
+        }
+    }
+}
+void renderGrasses() {
+    for (const auto& grass : grasses) {
+        if (grass.active) {
+            SDL_RenderCopy(renderer, grassTextures[grass.frame], NULL, &grass.rect);
+        }
+    }
+}
 void gameLoop() {
     bool quit = false;
     SDL_Event e;
     int score = 0;
-current_speed = base_speed;
-//int lastSpeedIncreaseScore = 0;
-//int lastSpeedIncreaseAt = -SPEED_INCREASE_THRESHOLD;
+    int highScore = readHighScore(); // Đọc high score khi bắt đầu
+    current_speed = base_speed;
+    grasses.clear();
+    forbiddenZones.clear();
+
     while (!quit) {
         while (SDL_PollEvent(&e) != 0) {
             if (e.type == SDL_QUIT) {
                 quit = true;
-            } else if (e.type == SDL_KEYDOWN) {
+            }
+            else if (e.type == SDL_KEYDOWN) {
                 switch (e.key.keysym.sym) {
-    case SDLK_LEFT:
-        car.x = LEFT_LANE_CENTER - CAR_WIDTH / 2; // Giữa làn trái
-        break;
-    case SDLK_RIGHT:
-        car.x = RIGHT_LANE_CENTER - CAR_WIDTH / 2; // Giữa làn phải
-        break;
+                    case SDLK_LEFT:
+                        car.x = LEFT_LANE_CENTER - CAR_WIDTH / 2;
+                        break;
+                    case SDLK_RIGHT:
+                        car.x = RIGHT_LANE_CENTER - CAR_WIDTH / 2;
+                        break;
                     case SDLK_UP:
                         if (!isJumping) {
                             isJumping = true;
@@ -489,95 +823,90 @@ current_speed = base_speed;
             }
         }
 
+        // Cập nhật trạng thái nhảy
         if (isJumping) {
             if (jumpProgress < JUMP_HEIGHT) {
                 car.y -= 5;
                 jumpProgress += 5;
-            } else if (jumpProgress < JUMP_HEIGHT * 2) {
+            }
+            else if (jumpProgress < JUMP_HEIGHT * 2) {
                 car.y += 5;
                 jumpProgress += 5;
-            } else {
+            }
+            else {
                 isJumping = false;
                 car.y = SCREEN_HEIGHT - CAR_HEIGHT - 20;
             }
         }
-  updateRoadStrips(current_speed);
-
+        updateForbiddenZones();
+        updateRoadStrips(current_speed);
+        updateBrickRows(current_speed);
+        spawnGrass();
+        updateGrasses(score);
         donkey.y += (int)current_speed;
         if (donkey.y > SCREEN_HEIGHT) {
-                donkey.x = (rand() % 2 == 0) ? (LEFT_LANE_CENTER - DONKEY_WIDTH / 2)
-                             : (RIGHT_LANE_CENTER - DONKEY_WIDTH / 2);
-
-            donkey.y = -DONKEY_HEIGHT;
+            spawnDonkey();
             score++;
-             Mix_PlayChannel(-1, pointSound, 0);
-if (score > 0 && score % SPEED_INCREASE_INTERVAL == 0 &&
-    donkey.y == -DONKEY_HEIGHT &&
-    current_speed < MAX_SPEED) {
-    current_speed += SPEED_INCREMENT;
-    if (current_speed > MAX_SPEED) {
-        current_speed = MAX_SPEED;
-    }
-}
+            Mix_PlayChannel(-1, pointSound, 0);
+            if (score > 0 && score % SPEED_INCREASE_INTERVAL == 0 &&
+                current_speed < MAX_SPEED) {
+                current_speed += SPEED_INCREMENT;
             }
+        }
         coin.y += (int)current_speed;
         if (coin.y > SCREEN_HEIGHT) {
-                coin.x = (rand() % 2 == 0) ? (LEFT_LANE_CENTER - COIN_WIDTH / 2)
-                           : (RIGHT_LANE_CENTER - COIN_WIDTH / 2);
-            coin.y = -COIN_HEIGHT;
+            spawnCoin();
         }
-
-//        if (checkCollision(car, coin)) {
-if (checkPreciseCollision(car, CAR_HITBOX, coin, COIN_HITBOX)) {
+        if (checkPreciseCollision(car, CAR_HITBOX, coin, COIN_HITBOX)) {
             goldCoins++;
             if (goldCoins % 5 == 0) {
                 lives++;
             }
-           coin.x = (rand() % 2 == 0) ? (LEFT_LANE_CENTER - COIN_WIDTH / 2)
-                               : (RIGHT_LANE_CENTER - COIN_WIDTH / 2);
-            coin.y = -COIN_HEIGHT;
-
+            spawnCoin();
         }
-
-//        if (score % SPEED_INCREASE_INTERVAL == 0 && score != 0) {
-//            current_speed += SPEED_INCREMENT;
-//        }
-
-//        if (checkCollision(car, donkey)) {
-if (checkPreciseCollision(car, CAR_HITBOX, donkey, DONKEY_HITBOX)) {
+        if (checkPreciseCollision(car, CAR_HITBOX, donkey, DONKEY_HITBOX)) {
             if (lives > 0) {
                 lives--;
-                donkey.x = rand() % 2 == 0 ? 160 : SCREEN_WIDTH / 2;
-                donkey.y = -DONKEY_HEIGHT;
-            } else {
+                spawnDonkey();
+            }
+            else {
                 showExplosion(car.x + CAR_WIDTH / 2, car.y + CAR_HEIGHT / 2);
-                 Mix_HaltChannel(-1);
-                 Mix_PlayChannel(-1, collisionSound, 0);
+                Mix_HaltChannel(-1);
+                Mix_PlayChannel(-1, collisionSound, 0);
                 if (showGameOver(score, goldCoins)) {
-                    donkey.x = rand() % 2 == 0 ? 160 : SCREEN_WIDTH / 2;
-                    donkey.y = -DONKEY_HEIGHT;
                     car.x = SCREEN_WIDTH / 2 - CAR_WIDTH / 2;
                     car.y = SCREEN_HEIGHT - CAR_HEIGHT - 20;
-                    coin.x = rand() % (SCREEN_WIDTH - 320 - COIN_WIDTH) + 160;
-                    coin.y = -COIN_HEIGHT;
+                    spawnDonkey();
+                    spawnCoin();
                     score = 0;
                     goldCoins = 0;
                     lives = 0;
-                    current_speed = 3.0f;
+                    current_speed = base_speed;
+                    grasses.clear();
+                    forbiddenZones.clear();
                     Mix_PlayChannel(-1, engineSound, -1);
-                } else {
+                }
+                else {
                     quit = true;
                 }
             }
-        }
 
+        }
         SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
         SDL_RenderClear(renderer);
+
         renderBackground();
-        renderScore(score, goldCoins, lives);
+        renderScore(score, goldCoins, lives, highScore);
+        if (score > highScore) {
+            highScore = score;
+            writeHighScore(highScore);
+         showNewRecordEffect(renderer, font);
+        }
+        renderGrasses();
         SDL_RenderCopy(renderer, carTexture, NULL, &car);
         SDL_RenderCopy(renderer, donkeyTexture, NULL, &donkey);
         SDL_RenderCopy(renderer, coinTexture, NULL, &coin);
+
         SDL_RenderPresent(renderer);
     }
 }
@@ -600,5 +929,3 @@ int main(int argc, char* argv[]) {
     close();
     return 0;
 }
-// them phan co cuon xuong o to co the nhay qua trong 20 diem dau tien
-// xu li random sao cho lua va xu khong chong vao nhau

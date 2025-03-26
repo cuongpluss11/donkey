@@ -1,5 +1,5 @@
 # depslib dependency file v1.0
-1742871783 source:c:\users\admin\desktop\sdl2codegmae\codegame\main.cpp
+1742953643 source:c:\users\admin\desktop\sdl2codegmae\codegame\main.cpp
 	<SDL.h>
 	<SDL_image.h>
 	<SDL_ttf.h>
@@ -8,4 +8,6 @@
 	<cstdlib>
 	<ctime>
 	<vector>
+	<fstream>
+	<sstream>
 
