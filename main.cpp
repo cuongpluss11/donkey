@@ -56,19 +56,20 @@ SDL_Texture* donkeyTexture = NULL;
 SDL_Texture* coinTexture = NULL;
 SDL_Texture* explosionTexture = NULL;
 SDL_Texture* introTexture = NULL;
+SDL_Texture* gameOverTexture = NULL;
 SDL_Texture* grassTextures[GRASS_FRAMES];
 TTF_Font* font = NULL;
 Mix_Music* introMusic = NULL;
 Mix_Chunk* pointSound = NULL;
 Mix_Chunk* collisionSound = NULL;
-Mix_Chunk* countdown3Sound = nullptr;
-Mix_Chunk* countdown2Sound = nullptr;
-Mix_Chunk* countdown1Sound = nullptr;
-Mix_Chunk* countdownStartSound = nullptr;
-Mix_Chunk* engineSound = nullptr;
-Mix_Chunk* startSound = nullptr;
-Mix_Chunk* grassSound = nullptr;
-Mix_Chunk* coinSound = nullptr;
+Mix_Chunk* countdown3Sound = NULL;
+Mix_Chunk* countdown2Sound = NULL;
+Mix_Chunk* countdown1Sound = NULL;
+Mix_Chunk* countdownStartSound = NULL;
+Mix_Chunk* engineSound = NULL;
+Mix_Chunk* startSound = NULL;
+Mix_Chunk* grassSound = NULL;
+Mix_Chunk* coinSound = NULL;
 
 SDL_Rect car = {SCREEN_WIDTH / 2 - CAR_WIDTH / 2, SCREEN_HEIGHT - CAR_HEIGHT - 20, CAR_WIDTH, CAR_HEIGHT};
 SDL_Rect donkey = {rand() % 2 == 0 ? 160 : SCREEN_WIDTH / 2, -DONKEY_HEIGHT, DONKEY_WIDTH, DONKEY_HEIGHT};
@@ -203,7 +204,6 @@ bool init() {
         strip.height = ROAD_STRIP_HEIGHT;
         roadStrips.push_back(strip);
     }
-     // Khởi tạo các hàng gạch trái
     for (int i = 0; i < NUM_BRICK_ROWS; ++i) {
         BrickRow row;
         row.y = i * BRICK_HEIGHT;
@@ -235,6 +235,21 @@ void updateBrickRows(float speed) {
         }
     }
 }
+void updateRoadStrips(float speed) {
+    roadOffset += speed;
+
+    for (auto& strip : roadStrips) {
+        strip.y += (int)speed;
+
+        if (strip.y > SCREEN_HEIGHT) {
+            strip.y = -ROAD_STRIP_HEIGHT;
+        }
+    }
+
+    if (roadOffset >= ROAD_STRIP_HEIGHT) {
+        roadOffset -= ROAD_STRIP_HEIGHT;
+    }
+}
 void renderBackground() {
     SDL_SetRenderDrawColor(renderer, 194, 178, 128, 255);
     SDL_Rect leftPanel = {0, 0, 160, SCREEN_HEIGHT};
@@ -256,7 +271,7 @@ void renderBackground() {
     }
     for (const auto& row : rightBrickRows) {
         if (row.y + BRICK_HEIGHT >= 0 && row.y < SCREEN_HEIGHT) {
-            SDL_SetRenderDrawColor(renderer, 178, 34, 34, 255); // Màu đỏ gạch
+            SDL_SetRenderDrawColor(renderer, 178, 34, 34, 255);
             SDL_Rect brickRect = {SCREEN_WIDTH - 170, row.y, BRICK_WIDTH, BRICK_HEIGHT};
             SDL_RenderFillRect(renderer, &brickRect);
             if (row.hasLine) {
@@ -278,40 +293,24 @@ void renderBackground() {
         }
     }
 }
-void updateRoadStrips(float speed) {
-    roadOffset += speed;
 
-    for (auto& strip : roadStrips) {
-        strip.y += (int)speed;
-
-        if (strip.y > SCREEN_HEIGHT) {
-            strip.y = -ROAD_STRIP_HEIGHT;
-        }
-    }
-
-    if (roadOffset >= ROAD_STRIP_HEIGHT) {
-        roadOffset -= ROAD_STRIP_HEIGHT;
-    }
-}
 
 void countdown() {
     Mix_HaltMusic();
-TTF_Font* countdownFont = TTF_OpenFont("comic.ttf", 80); // Dùng biến cục bộ
+TTF_Font* countdownFont = TTF_OpenFont("comic.ttf", 80);
     if (!countdownFont) {
-        cout << "Failed to load countdown font! SDL_ttf Error: " << TTF_GetError() << endl;
+        TTF_GetError();
         return;
     }
     for (int i = 3; i > 0; --i) {
         SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
         SDL_RenderClear(renderer);
-
         string countText = to_string(i);
         SDL_Color textColor = {255, 255, 255, 255};
         SDL_Surface* textSurface = TTF_RenderText_Solid(countdownFont, countText.c_str(), textColor);
         SDL_Texture* textTexture = SDL_CreateTextureFromSurface(renderer, textSurface);
         SDL_Rect textRect = {SCREEN_WIDTH / 2 - textSurface->w / 2, SCREEN_HEIGHT / 2 - textSurface->h / 2, textSurface->w, textSurface->h};
         SDL_RenderCopy(renderer, textTexture, NULL, &textRect);
-
         SDL_FreeSurface(textSurface);
         SDL_DestroyTexture(textTexture);
         switch (i) {
@@ -329,17 +328,14 @@ TTF_Font* countdownFont = TTF_OpenFont("comic.ttf", 80); // Dùng biến cục b
         SDL_RenderPresent(renderer);
         SDL_Delay(1000);
     }
-
     SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
     SDL_RenderClear(renderer);
-
     string startText = "Start!!!";
     SDL_Color textColor = {255, 255, 255, 255};
     SDL_Surface* textSurface = TTF_RenderText_Solid(countdownFont, startText.c_str(), textColor);
     SDL_Texture* textTexture = SDL_CreateTextureFromSurface(renderer, textSurface);
     SDL_Rect textRect = {SCREEN_WIDTH / 2 - textSurface->w / 2, SCREEN_HEIGHT / 2 - textSurface->h / 2, textSurface->w, textSurface->h};
     SDL_RenderCopy(renderer, textTexture, NULL, &textRect);
-
     SDL_FreeSurface(textSurface);
     SDL_DestroyTexture(textTexture);
     Mix_PlayChannel(-1, startSound, 0);
@@ -412,8 +408,7 @@ void showNewRecordEffect(SDL_Renderer* renderer, TTF_Font* font) {
         SDL_RenderPresent(renderer);
         SDL_FreeSurface(surface);
         SDL_DestroyTexture(texture);
-
-        // Vẫn xử lý sự kiện để game không bị đơ
+        // van xu li su kien
         SDL_Event e;
         while (SDL_PollEvent(&e)) {
             if (e.type == SDL_QUIT) {
@@ -425,18 +420,16 @@ void showNewRecordEffect(SDL_Renderer* renderer, TTF_Font* font) {
 bool loadMedia() {
     carTexture = loadTexture("oto.png");
     if (!carTexture) return false;
-
     donkeyTexture = loadTexture("conlua.png");
     if (!donkeyTexture) return false;
-
     coinTexture = loadTexture("tien.png");
     if (!coinTexture) return false;
-
     explosionTexture = loadTexture("no.png");
     if (!explosionTexture) return false;
-
     introTexture = loadTexture("bg1.jpg");
     if (!introTexture) return false;
+    gameOverTexture= loadTexture("gameover.jpg");
+    if(!gameOverTexture) return false;
     for (int i = 0; i < GRASS_FRAMES; i++) {
         string path = "grass" + to_string(i+1) + ".png";
         grassTextures[i] = loadTexture(path.c_str());
@@ -465,13 +458,13 @@ bool loadMedia() {
     if(!coinSound) return false;
     return true;
 }
-
 void close() {
     SDL_DestroyTexture(carTexture);
     SDL_DestroyTexture(donkeyTexture);
     SDL_DestroyTexture(coinTexture);
     SDL_DestroyTexture(explosionTexture);
     SDL_DestroyTexture(introTexture);
+    SDL_DestroyTexture(gameOverTexture);
     for (int i = 0; i < GRASS_FRAMES; i++) {
         SDL_DestroyTexture(grassTextures[i]);
     }
@@ -499,18 +492,14 @@ void showExplosion(int x, int y) {
     SDL_RenderPresent(renderer);
     SDL_Delay(500);
 }
-
 void renderCurvedTitle(int yOffset) {
     string title = "DONKEY GAME";
-    SDL_Color textColor = {255, 0, 0, 255}; // Màu đỏ retro
-    TTF_Font* font = TTF_OpenFont("Impacted.ttf", 72); // Font lớn hơn
-
+    SDL_Color textColor = {255, 0, 0, 255};
+    TTF_Font* font = TTF_OpenFont("Impacted.ttf", 72);
     if (!font) {
-        cout << "Failed to load font! SDL_ttf Error: " << TTF_GetError() << endl;
+       cout<< TTF_GetError();
         return;
     }
-
-    // Tính toán vị trí trung tâm
     int totalWidth = 0;
     vector<SDL_Surface*> charSurfaces;
     vector<SDL_Texture*> charTextures;
@@ -520,7 +509,7 @@ void renderCurvedTitle(int yOffset) {
         string charStr(1, c);
         SDL_Surface* surface = TTF_RenderText_Solid(font, charStr.c_str(), textColor);
         if (!surface) {
-            cout << "Failed to render text surface! SDL_ttf Error: " << TTF_GetError() << endl;
+            cout << TTF_GetError() << endl;
             continue;
         }
 
@@ -536,11 +525,11 @@ void renderCurvedTitle(int yOffset) {
         totalWidth += surface->w;
     }
 
-    // Vị trí bắt đầu (căn giữa)
+    // can giua
     int startX = (SCREEN_WIDTH - totalWidth) / 2;
     int baseY = SCREEN_HEIGHT / 3 + yOffset;
 
-    // Vẽ từng ký tự với độ cong (hiệu ứng sin)
+    // ve tung doi tuong cong hinh sin
     for (size_t i = 0; i < charTextures.size(); i++) {
         SDL_Rect charRect = {
             startX,
@@ -551,39 +540,33 @@ void renderCurvedTitle(int yOffset) {
         SDL_RenderCopy(renderer, charTextures[i], NULL, &charRect);
         startX += charSurfaces[i]->w;
     }
-
-    // Giải phóng bộ nhớ
     for (size_t i = 0; i < charSurfaces.size(); i++) {
         SDL_FreeSurface(charSurfaces[i]);
         SDL_DestroyTexture(charTextures[i]);
     }
-
     TTF_CloseFont(font);
 }
 
 void showIntro() {
     Mix_PlayMusic(introMusic, -1);
-
     bool quit = false;
     SDL_Event e;
     Uint32 startTime = SDL_GetTicks();
     bool visible = true;
     int yOffset = 0;
     bool movingDown = true;
-    const int BLINK_INTERVAL = 600; // 0.6 giây nhấp nháy
-    const int MOVE_RANGE = 8; // Độ di chuyển lớn hơn
-
+    const int BLINK_INTERVAL = 600;
+    const int MOVE_RANGE = 8;
     while (!quit) {
         SDL_RenderCopy(renderer, introTexture, NULL, NULL);
 
-        // Hiệu ứng nhấp nháy
         if (visible) {
             renderCurvedTitle(yOffset);
-            // Đã xóa phần glow rect ở đây
+
         }
 
         // Hiển thị hướng dẫn
-        string introText = "Press any key to start";
+        string introText = "Press enter to start";
         SDL_Color textColor = {255, 255, 255, 255};
         TTF_Font* font = TTF_OpenFont("arial.ttf", 28);
         if (font) {
@@ -626,17 +609,11 @@ void showIntro() {
     Mix_HaltMusic();
 }
 bool showGameOver(int score, int goldCoins) {
-    SDL_Texture* gameOverImage = IMG_LoadTexture(renderer, "gameover.jpg");
-    if (!gameOverImage) {IMG_GetError();
-    }
+    SDL_RenderCopy(renderer, gameOverTexture, NULL, NULL);
     SDL_Texture* screenTexture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGBA8888,
                                                  SDL_TEXTUREACCESS_TARGET,
                                                  SCREEN_WIDTH, SCREEN_HEIGHT);
-    if (!screenTexture) {
-        SDL_GetError();
-        if (gameOverImage) SDL_DestroyTexture(gameOverImage);
-        return false;
-    }
+
     SDL_SetRenderTarget(renderer, screenTexture);
     SDL_RenderCopy(renderer, NULL, NULL, NULL);
     SDL_SetRenderTarget(renderer, NULL);
@@ -660,16 +637,16 @@ bool showGameOver(int score, int goldCoins) {
     }
     SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
     SDL_RenderClear(renderer);
-    if (gameOverImage) {
+    if (gameOverTexture) {
         SDL_Rect imgRect = {0, 0, SCREEN_WIDTH, SCREEN_HEIGHT};
-        SDL_RenderCopy(renderer, gameOverImage, NULL, &imgRect);
+        SDL_RenderCopy(renderer, gameOverTexture, NULL, &imgRect);
     }
     if (!font) {
         font = TTF_OpenFont("arialbd.ttf", 24);
         if (!font) {
             TTF_GetError();
             SDL_DestroyTexture(screenTexture);
-            if (gameOverImage) SDL_DestroyTexture(gameOverImage);
+            if (gameOverTexture) SDL_DestroyTexture(gameOverTexture);
             return false;
         }
     }
@@ -679,7 +656,7 @@ bool showGameOver(int score, int goldCoins) {
     if (!textSurface) {
         TTF_GetError();
         SDL_DestroyTexture(screenTexture);
-        if (gameOverImage) SDL_DestroyTexture(gameOverImage);
+        if (gameOverTexture) SDL_DestroyTexture(gameOverTexture);
         return false;
     }
     SDL_Texture* textTexture = SDL_CreateTextureFromSurface(renderer, textSurface);
@@ -687,7 +664,7 @@ bool showGameOver(int score, int goldCoins) {
         SDL_GetError();
         SDL_FreeSurface(textSurface);
         SDL_DestroyTexture(screenTexture);
-        if (gameOverImage) SDL_DestroyTexture(gameOverImage);
+        if (gameOverTexture) SDL_DestroyTexture(gameOverTexture);
         return false;
     }
     SDL_Rect scoreRect = {
@@ -697,8 +674,6 @@ bool showGameOver(int score, int goldCoins) {
         textSurface->h
     };
     SDL_RenderCopy(renderer, textTexture, NULL, &scoreRect);
-
-    // Hiển thị hướng dẫn
     string replayText = "PRESS [R] TO REPLAY   [Q] TO QUIT";
     SDL_Surface* replaySurface = TTF_RenderText_Blended(font, replayText.c_str(), textColor);
     if (replaySurface) {
@@ -719,9 +694,6 @@ bool showGameOver(int score, int goldCoins) {
     SDL_FreeSurface(textSurface);
     SDL_DestroyTexture(textTexture);
     SDL_DestroyTexture(screenTexture);
-    if (gameOverImage) {
-        SDL_DestroyTexture(gameOverImage);
-    }
     SDL_Event e;
     while (true) {
         while (SDL_PollEvent(&e) != 0) {
@@ -736,6 +708,7 @@ bool showGameOver(int score, int goldCoins) {
         SDL_Delay(16);
     }
 }
+
 void spawnGrass() {
     if (rand() % 1000 >= GRASS_SPAWN_CHANCE) return;
 
@@ -1098,4 +1071,6 @@ int main(int argc, char* argv[]) {
     close();
     return 0;
 }
-// xu li loi xu bi tinh dup
+// bỏ tác dụng của nhay và sự trừ xu của cỏ , cải biến cơ chế tính xu
+// lam cho an R Q nhay
+
