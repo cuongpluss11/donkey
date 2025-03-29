@@ -35,6 +35,7 @@ const int SPEED_INCREASE_INTERVAL = 10;
 const float SPEED_INCREMENT = 1.0f;
 const float MAX_SPEED = 10.0f;
 bool isJumping = false;
+bool coinCollected = false;
 const int JUMP_HEIGHT = 200;
 const float JUMP_SPEED = 7.0f;
 const int MAX_JUMPS = 2;
@@ -49,6 +50,7 @@ int jumpProgress = 0;
 float roadOffset = 0.0f;
 const int GRASS_SPAWN_INTERVAL = 120; // frames
 int grassSpawnTimer = 0;
+Uint32 invincibleUntil = 0;
 SDL_Window* window = NULL;
 SDL_Renderer* renderer = NULL;
 SDL_Texture* carTexture = NULL;
@@ -774,7 +776,6 @@ void spawnDonkey() {
     zone.framesRemaining = 120;
     forbiddenZones.push_back(zone);
 }
-
 void spawnCoin() {
     SDL_Rect newCoin;
     newCoin.w = COIN_WIDTH;
@@ -790,10 +791,13 @@ void spawnCoin() {
         attempts++;
 
         if (attempts >= MAX_ATTEMPTS) {
-            return; // Không spawn nếu không tìm được vị trí
+            return;
         }
     } while (!isSafeToSpawn(newCoin));
+
     coin = newCoin;
+    coinCollected = false;  // Khởi tạo trạng thái chưa thu thập
+
     ForbiddenZone zone;
     zone.rect = {coin.x - 15, coin.y - 15,
                 COIN_WIDTH + 30, COIN_HEIGHT + 50};
@@ -826,59 +830,31 @@ void handleInput() {
             isOnGround = false;
             jumpVelocity = JUMP_SPEED;
             jumpsRemaining--;
-           // Mix_PlayChannel(-1, jumpSound, 0); // Thêm âm thanh nhảy
         }
     }
 }
-
-void updateGrasses(int& score) {
+void updateGrasses() {  // Bỏ tham số score vì không cần tính điểm nữa
     for (size_t i = 0; i < grasses.size(); ) {
         grasses[i].rect.y += (int)current_speed;
-
         grasses[i].frameCounter++;
         if (grasses[i].frameCounter >= 15) {
             grasses[i].frame = (grasses[i].frame + 1) % GRASS_FRAMES;
             grasses[i].frameCounter = 0;
         }
-
         if (grasses[i].rect.y > SCREEN_HEIGHT) {
             grasses.erase(grasses.begin() + i);
         } else {
-            if (checkPreciseCollision(car, CAR_HITBOX, grasses[i].rect, GRASS_HITBOX)) {
-                if (isJumping && !grasses[i].scored) {
-                    grasses[i].scored = true;
-                    Mix_PlayChannel(-1, grassSound, 0);
-                    score++;
-                    ForbiddenZone zone;
-                    zone.rect = {grasses[i].rect.x - 10, grasses[i].rect.y - 10,
-                                GRASS_WIDTH + 20, GRASS_HEIGHT + 20};
-                    zone.framesRemaining = 30;
-                    forbiddenZones.push_back(zone);
-                } else if (!isJumping) {
-                    goldCoins = max(0, goldCoins - 2);
-                    grasses.erase(grasses.begin() + i);
-                    continue;
-                }
-            }
-            i++;
+            i++;  // Chỉ cần tăng i mà không cần kiểm tra va chạm
         }
     }
 }
+
 void renderGrasses() {
     for (const auto& grass : grasses) {
         if (grass.active) {
             SDL_RenderCopy(renderer, grassTextures[grass.frame], NULL, &grass.rect);
         }
     }
-}
-bool checkCollisionGrass(SDL_Rect car) {
-    // Kiểm tra va chạm với cỏ
-    for (auto& grass : grasses) {
-        if (SDL_HasIntersection(&car, &grass.rect)) {
-            return true;
-        }
-    }
-    return false;
 }
 void gameLoop() {
     bool quit = false;
@@ -891,7 +867,7 @@ void gameLoop() {
     int coinsForExtraLife = 0;
     current_speed = base_speed;
     bool donkeyPassed = false;
-     bool donkeyHalfPassed = false;
+    bool donkeyHalfPassed = false;
     bool isJumping = false;
     int jumpProgress = 0;
     bool coinActive = true;
@@ -946,18 +922,17 @@ void gameLoop() {
         updateRoadStrips(current_speed);
         updateBrickRows(current_speed);
         spawnGrass();
-        updateGrasses(score);
+        updateGrasses();
 
-donkey.y += (int)current_speed;
+        donkey.y += (int)current_speed;
         if (donkey.y > SCREEN_HEIGHT) {
             spawnDonkey();
             donkeyPassed = false;
             donkeyHalfPassed = false;
-        }
-        else {
+        } else {
             int carBottom = car.y + CAR_HEIGHT;
             int donkeyTop = donkey.y;
-            int donkeyMiddle = donkey.y + DONKEY_HEIGHT/2;
+            int donkeyMiddle = donkey.y + DONKEY_HEIGHT / 2;
 
             if (!donkeyHalfPassed && carBottom <= donkeyMiddle) {
                 donkeyHalfPassed = true;
@@ -971,22 +946,20 @@ donkey.y += (int)current_speed;
                 }
             }
         }
+
         if (coinActive) {
             coin.y += (int)current_speed;
             if (!coinCollected && checkPreciseCollision(car, CAR_HITBOX, coin, COIN_HITBOX)) {
-                goldCoins++;
+                goldCoins = min(goldCoins + 1, 999);
                 coinsForExtraLife++;
-
-                // Tăng mạng nếu đủ 10 xu và chưa đạt mạng tối đa
+                coinCollected = true;
+                coinActive = false;
+                coin.y = SCREEN_HEIGHT + 100;
+                Mix_PlayChannel(-1, coinSound, 0);
                 if (coinsForExtraLife >= 10 && lives < MAX_LIVES) {
                     lives++;
                     coinsForExtraLife -= 10;
                 }
-
-                coinCollected = true;
-                coinActive = false;
-                coinSpawnTime = currentTime + COIN_SPAWN_DELAY;
-                Mix_PlayChannel(-1, coinSound, 0);
             }
             if (coin.y > SCREEN_HEIGHT) {
                 spawnCoin();
@@ -998,19 +971,14 @@ donkey.y += (int)current_speed;
             coinActive = true;
             coinCollected = false;
         }
-        if (checkCollisionGrass(car)) {
-            if (goldCoins >= 2) {
-                goldCoins -= 2;
-            } else {
-                goldCoins = 0;
-            }
-        }
+
         if (checkPreciseCollision(car, CAR_HITBOX, donkey, DONKEY_HITBOX)) {
             if (lives > 0) {
                 lives--;
                 spawnDonkey();
                 donkeyPassed = false;
-            } else {
+            }
+            if (lives == 0) {
                 showExplosion(car.x + CAR_WIDTH / 2, car.y + CAR_HEIGHT / 2);
                 Mix_HaltChannel(-1);
                 Mix_PlayChannel(-1, collisionSound, 0);
@@ -1036,14 +1004,11 @@ donkey.y += (int)current_speed;
             }
         }
 
-        // Render game
         SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
         SDL_RenderClear(renderer);
-
         renderBackground();
         renderScore(score, goldCoins, lives, highScore);
         renderGrasses();
-
         SDL_RenderCopy(renderer, carTexture, NULL, &car);
         SDL_RenderCopy(renderer, donkeyTexture, NULL, &donkey);
         if (coinActive) {
@@ -1054,6 +1019,7 @@ donkey.y += (int)current_speed;
     }
     Mix_HaltChannel(-1);
 }
+
 int main(int argc, char* argv[]) {
     srand(time(NULL));
 
@@ -1071,6 +1037,6 @@ int main(int argc, char* argv[]) {
     close();
     return 0;
 }
-// bỏ tác dụng của nhay và sự trừ xu của cỏ , cải biến cơ chế tính xu
-// lam cho an R Q nhay
+// cho R Q nhay
+// giai quyet triet de loi sau 10 diem dam phat thua luon
 
