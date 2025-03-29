@@ -66,6 +66,8 @@ Mix_Chunk* engineSound = NULL;
 Mix_Chunk* startSound = NULL;
 Mix_Chunk* grassSound = NULL;
 Mix_Chunk* coinSound = NULL;
+Mix_Chunk* collisionSmallSound = NULL;
+Mix_Chunk* extralifeSound= NULL;
 
 SDL_Rect car = {SCREEN_WIDTH / 2 - CAR_WIDTH / 2, SCREEN_HEIGHT - CAR_HEIGHT - 20, CAR_WIDTH, CAR_HEIGHT};
 SDL_Rect donkey = {rand() % 2 == 0 ? 160 : SCREEN_WIDTH / 2, -DONKEY_HEIGHT, DONKEY_WIDTH, DONKEY_HEIGHT};
@@ -461,8 +463,13 @@ bool loadMedia() {
     if (!grassSound) return false;
     coinSound = Mix_LoadWAV("coinSound.wav");
     if(!coinSound) return false;
-    return true;
+    collisionSmallSound=Mix_LoadWAV("vachamtrumang.wav");
+    if(!collisionSmallSound) return false;
+    extralifeSound=Mix_LoadWAV("mangthem.wav");
+    if(!extralifeSound) return false;
+     return true;
 }
+
 void close() {
     SDL_DestroyTexture(carTexture);
     SDL_DestroyTexture(donkeyTexture);
@@ -486,6 +493,8 @@ void close() {
     Mix_FreeChunk(startSound);
     Mix_FreeChunk(grassSound);
     Mix_FreeChunk(coinSound);
+    Mix_FreeChunk(collisionSmallSound);
+    Mix_FreeChunk(extralifeSound);
     TTF_Quit();
     IMG_Quit();
     SDL_Quit();
@@ -932,6 +941,7 @@ if (score > highScore) {
                 Mix_PlayChannel(-1, coinSound, 0);
                 if (coinsForExtraLife >= 10 && lives < MAX_LIVES) {
                     lives++;
+                    Mix_PlayChannel(-1,extralifeSound,0);
                     coinsForExtraLife -= 10;
                 }
             }
@@ -949,6 +959,7 @@ if (score > highScore) {
             if (lives > 1) {
                 lives--;
                 spawnDonkey();
+                Mix_PlayChannel(-1,collisionSmallSound,0);
                 donkeyPassed = false;
             } else if (lives == 1) {
                 lives--;
