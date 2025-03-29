@@ -34,13 +34,7 @@ float current_speed = base_speed;
 const int SPEED_INCREASE_INTERVAL = 10;
 const float SPEED_INCREMENT = 1.0f;
 const float MAX_SPEED = 10.0f;
-bool isJumping = false;
 bool coinCollected = false;
-const int JUMP_HEIGHT = 200;
-const float JUMP_SPEED = 7.0f;
-const int MAX_JUMPS = 2;
-int jumpsRemaining = MAX_JUMPS;
-float jumpVelocity = 0.0f;
 bool isOnGround = true;
 const string HIGHSCORE_FILE = "highscore.txt";
 const int BRICK_WIDTH = 10;
@@ -180,7 +174,7 @@ void writeHighScore(int score) {
     }
 }
 bool init() {
-    if (SDL_Init(SDL_INIT_VIDEO) < 0) {
+    if (SDL_Init(SDL_INIT_VIDEO| SDL_INIT_AUDIO | SDL_INIT_EVENTS) < 0) {
         return false;
     }
     if (!(IMG_Init(IMG_INIT_PNG) & IMG_INIT_PNG)) {
@@ -388,7 +382,15 @@ void renderScore(int score, int goldCoins, int lives, int highScore) {
         TTF_CloseFont(normalFont);
     }
 }
-void showNewRecordEffect(SDL_Renderer* renderer, TTF_Font* font) {
+void showNewRecordEffect(SDL_Renderer* renderer, TTF_Font* font, bool& isFirstNewRecord) {
+    // Chỉ hiển thị nếu là lần đầu đạt high score mới
+    if (!isFirstNewRecord) {
+        return;
+    }
+
+    // Đánh dấu đã hiển thị để không hiển thị lại
+    isFirstNewRecord = false;
+
     Uint32 startTime = SDL_GetTicks();
     while (SDL_GetTicks() - startTime < 2000) {
         SDL_SetRenderDrawColor(renderer, 0, 0, 0, 150);
@@ -410,7 +412,8 @@ void showNewRecordEffect(SDL_Renderer* renderer, TTF_Font* font) {
         SDL_RenderPresent(renderer);
         SDL_FreeSurface(surface);
         SDL_DestroyTexture(texture);
-        // van xu li su kien
+
+        // Xử lý sự kiện
         SDL_Event e;
         while (SDL_PollEvent(&e)) {
             if (e.type == SDL_QUIT) {
@@ -593,8 +596,6 @@ void showIntro() {
             visible = !visible;
             startTime = SDL_GetTicks();
         }
-
-        // Di chuyển lên xuống
         yOffset += movingDown ? 1 : -1;
         if (abs(yOffset) >= MOVE_RANGE) movingDown = !movingDown;
 
@@ -619,14 +620,16 @@ bool showGameOver(int score, int goldCoins) {
     SDL_SetRenderTarget(renderer, screenTexture);
     SDL_RenderCopy(renderer, NULL, NULL, NULL);
     SDL_SetRenderTarget(renderer, NULL);
+
     for (int i = 0; i < 8; ++i) {
         SDL_RenderCopy(renderer, screenTexture, NULL, NULL);
         SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
         SDL_SetRenderDrawColor(renderer, 255, 255, 255, (i % 2 == 0) ? 128 : 0);
         SDL_RenderFillRect(renderer, NULL);
         SDL_RenderPresent(renderer);
-        SDL_Delay(50);
+        SDL_Delay(30);
     }
+
     for (int i = 0; i < 15; ++i) {
         int offsetX = rand() % 12 - 6;
         int offsetY = rand() % 12 - 6;
@@ -635,74 +638,63 @@ bool showGameOver(int score, int goldCoins) {
         SDL_Rect destRect = {offsetX, offsetY, SCREEN_WIDTH, SCREEN_HEIGHT};
         SDL_RenderCopy(renderer, screenTexture, NULL, &destRect);
         SDL_RenderPresent(renderer);
-        SDL_Delay(30);
+        SDL_Delay(20);
     }
+
     SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
     SDL_RenderClear(renderer);
     if (gameOverTexture) {
         SDL_Rect imgRect = {0, 0, SCREEN_WIDTH, SCREEN_HEIGHT};
         SDL_RenderCopy(renderer, gameOverTexture, NULL, &imgRect);
     }
+
     if (!font) {
         font = TTF_OpenFont("arialbd.ttf", 24);
         if (!font) {
-            TTF_GetError();
             SDL_DestroyTexture(screenTexture);
             if (gameOverTexture) SDL_DestroyTexture(gameOverTexture);
             return false;
         }
     }
+
     SDL_Color textColor = {255, 255, 255, 255};
-    string scoreText = "SCORE: " + to_string(score) + "   GOLD: " + to_string(goldCoins);
+    std::string scoreText = "SCORE: " + std::to_string(score) + "   GOLD: " + std::to_string(goldCoins);
     SDL_Surface* textSurface = TTF_RenderText_Blended(font, scoreText.c_str(), textColor);
-    if (!textSurface) {
-        TTF_GetError();
-        SDL_DestroyTexture(screenTexture);
-        if (gameOverTexture) SDL_DestroyTexture(gameOverTexture);
-        return false;
-    }
     SDL_Texture* textTexture = SDL_CreateTextureFromSurface(renderer, textSurface);
-    if (!textTexture) {
-        SDL_GetError();
-        SDL_FreeSurface(textSurface);
-        SDL_DestroyTexture(screenTexture);
-        if (gameOverTexture) SDL_DestroyTexture(gameOverTexture);
-        return false;
-    }
+
     SDL_Rect scoreRect = {
-        SCREEN_WIDTH/2 - textSurface->w/2,
-        SCREEN_HEIGHT/2 - textSurface->h - 20,
+        SCREEN_WIDTH / 2 - textSurface->w / 2,
+        SCREEN_HEIGHT / 2 - textSurface->h - 20,
         textSurface->w,
         textSurface->h
     };
     SDL_RenderCopy(renderer, textTexture, NULL, &scoreRect);
-    string replayText = "PRESS [R] TO REPLAY   [Q] TO QUIT";
+
+    std::string replayText = "PRESS [R] TO REPLAY   [Q] TO QUIT";
     SDL_Surface* replaySurface = TTF_RenderText_Blended(font, replayText.c_str(), textColor);
-    if (replaySurface) {
-        SDL_Texture* replayTexture = SDL_CreateTextureFromSurface(renderer, replaySurface);
-        if (replayTexture) {
-            SDL_Rect replayRect = {
-                SCREEN_WIDTH/2 - replaySurface->w/2,
-                SCREEN_HEIGHT/2 + 40,
-                replaySurface->w,
-                replaySurface->h
-            };
-            SDL_RenderCopy(renderer, replayTexture, NULL, &replayRect);
-            SDL_DestroyTexture(replayTexture);
-        }
-        SDL_FreeSurface(replaySurface);
-    }
+    SDL_Texture* replayTexture = SDL_CreateTextureFromSurface(renderer, replaySurface);
+
+    SDL_Rect replayRect = {
+        SCREEN_WIDTH / 2 - replaySurface->w / 2,
+        SCREEN_HEIGHT / 2 + 40,
+        replaySurface->w,
+        replaySurface->h
+    };
+    SDL_RenderCopy(renderer, replayTexture, NULL, &replayRect);
+
     SDL_RenderPresent(renderer);
+
     SDL_FreeSurface(textSurface);
+    SDL_FreeSurface(replaySurface);
     SDL_DestroyTexture(textTexture);
+    SDL_DestroyTexture(replayTexture);
     SDL_DestroyTexture(screenTexture);
+
     SDL_Event e;
     while (true) {
-        while (SDL_PollEvent(&e) != 0) {
-            if (e.type == SDL_QUIT) {
-                return false;
-            }
-            else if (e.type == SDL_KEYDOWN) {
+        while (SDL_PollEvent(&e)) {
+            if (e.type == SDL_QUIT) return false;
+            if (e.type == SDL_KEYDOWN) {
                 if (e.key.keysym.sym == SDLK_r) return true;
                 if (e.key.keysym.sym == SDLK_q) return false;
             }
@@ -711,9 +703,9 @@ bool showGameOver(int score, int goldCoins) {
     }
 }
 
+
 void spawnGrass() {
     if (rand() % 1000 >= GRASS_SPAWN_CHANCE) return;
-
     SDL_Rect newGrass;
     newGrass.w = GRASS_WIDTH;
     newGrass.h = GRASS_HEIGHT;
@@ -763,13 +755,10 @@ void spawnDonkey() {
         attempts++;
 
         if (attempts >= MAX_ATTEMPTS) {
-            return; // Không spawn nếu không tìm được vị trí
+            return;
         }
     } while (!isSafeToSpawn(newDonkey));
-
     donkey = newDonkey;
-
-    // Thêm vùng cấm xung quanh lừa
     ForbiddenZone zone;
     zone.rect = {donkey.x - 20, donkey.y - 20,
                 DONKEY_WIDTH + 40, DONKEY_HEIGHT + 100};
@@ -781,7 +770,6 @@ void spawnCoin() {
     newCoin.w = COIN_WIDTH;
     newCoin.h = COIN_HEIGHT;
     newCoin.y = -COIN_HEIGHT;
-
     int attempts = 0;
     const int MAX_ATTEMPTS = 10;
 
@@ -814,26 +802,7 @@ void updateForbiddenZones() {
         }
     }
 }
-void handleInput() {
-    const Uint8* keystates = SDL_GetKeyboardState(NULL);
-
-    if (keystates[SDL_SCANCODE_LEFT]) {
-        car.x = LEFT_LANE_CENTER - CAR_WIDTH / 2;
-    }
-    else if (keystates[SDL_SCANCODE_RIGHT]) {
-        car.x = RIGHT_LANE_CENTER - CAR_WIDTH / 2;
-    }
-
-    if (keystates[SDL_SCANCODE_UP] && jumpsRemaining > 0) {
-        if (isOnGround || jumpsRemaining == MAX_JUMPS) {
-            isJumping = true;
-            isOnGround = false;
-            jumpVelocity = JUMP_SPEED;
-            jumpsRemaining--;
-        }
-    }
-}
-void updateGrasses() {  // Bỏ tham số score vì không cần tính điểm nữa
+void updateGrasses() {
     for (size_t i = 0; i < grasses.size(); ) {
         grasses[i].rect.y += (int)current_speed;
         grasses[i].frameCounter++;
@@ -844,11 +813,10 @@ void updateGrasses() {  // Bỏ tham số score vì không cần tính điểm n
         if (grasses[i].rect.y > SCREEN_HEIGHT) {
             grasses.erase(grasses.begin() + i);
         } else {
-            i++;  // Chỉ cần tăng i mà không cần kiểm tra va chạm
+            i++;
         }
     }
 }
-
 void renderGrasses() {
     for (const auto& grass : grasses) {
         if (grass.active) {
@@ -868,12 +836,10 @@ void gameLoop() {
     current_speed = base_speed;
     bool donkeyPassed = false;
     bool donkeyHalfPassed = false;
-    bool isJumping = false;
-    int jumpProgress = 0;
     bool coinActive = true;
     bool coinCollected = false;
+    bool isFirstNewRecord = true;
     Uint32 coinSpawnTime = 0;
-    const Uint32 COIN_SPAWN_DELAY = 300;
     grasses.clear();
     forbiddenZones.clear();
     spawnDonkey();
@@ -882,6 +848,7 @@ void gameLoop() {
     car.y = SCREEN_HEIGHT - CAR_HEIGHT - 20;
     Mix_VolumeChunk(coinSound, MIX_MAX_VOLUME / 2);
     Mix_PlayChannel(-1, engineSound, -1);
+
     while (!quit) {
         Uint32 currentTime = SDL_GetTicks();
         while (SDL_PollEvent(&e) != 0) {
@@ -895,29 +862,32 @@ void gameLoop() {
                     case SDLK_RIGHT:
                         car.x = RIGHT_LANE_CENTER - CAR_WIDTH / 2;
                         break;
-                    case SDLK_UP:
-                        if (!isJumping) {
-                            isJumping = true;
-                            jumpProgress = 0;
-                        }
+                           case SDLK_r:
+                        score = 0;
+                        goldCoins = 0;
+                        coinsForExtraLife = 0;
+                        lives = 3;
+                        current_speed = base_speed;
+                        grasses.clear();
+                        forbiddenZones.clear();
+                        spawnDonkey();
+                        spawnCoin();
+                        car.x = SCREEN_WIDTH / 2 - CAR_WIDTH / 2;
+                        car.y = SCREEN_HEIGHT - CAR_HEIGHT - 20;
+                        donkeyPassed = false;
+                        coinActive = true;
+                        coinCollected = false;
+                        isFirstNewRecord = true;
+                        Mix_HaltChannel(-1);
+                        Mix_PlayChannel(-1, engineSound, -1);
+                        break;
+                    case SDLK_q:
+                        quit = true;
                         break;
                 }
             }
         }
 
-        // Cập nhật nhảy
-        if (isJumping) {
-            if (jumpProgress < JUMP_HEIGHT) {
-                car.y -= 5;
-                jumpProgress += 5;
-            } else if (jumpProgress < JUMP_HEIGHT * 2) {
-                car.y += 5;
-                jumpProgress += 5;
-            } else {
-                isJumping = false;
-                car.y = SCREEN_HEIGHT - CAR_HEIGHT - 20;
-            }
-        }
         updateForbiddenZones();
         updateRoadStrips(current_speed);
         updateBrickRows(current_speed);
@@ -946,7 +916,11 @@ void gameLoop() {
                 }
             }
         }
-
+if (score > highScore) {
+            showNewRecordEffect(renderer, font, isFirstNewRecord);
+            highScore = score;
+            writeHighScore(highScore);
+        }
         if (coinActive) {
             coin.y += (int)current_speed;
             if (!coinCollected && checkPreciseCollision(car, CAR_HITBOX, coin, COIN_HITBOX)) {
@@ -971,14 +945,13 @@ void gameLoop() {
             coinActive = true;
             coinCollected = false;
         }
-
-        if (checkPreciseCollision(car, CAR_HITBOX, donkey, DONKEY_HITBOX)) {
-            if (lives > 0) {
+      if (checkPreciseCollision(car, CAR_HITBOX, donkey, DONKEY_HITBOX)) {
+            if (lives > 1) {
                 lives--;
                 spawnDonkey();
                 donkeyPassed = false;
-            }
-            if (lives == 0) {
+            } else if (lives == 1) {
+                lives--;
                 showExplosion(car.x + CAR_WIDTH / 2, car.y + CAR_HEIGHT / 2);
                 Mix_HaltChannel(-1);
                 Mix_PlayChannel(-1, collisionSound, 0);
@@ -1019,7 +992,6 @@ void gameLoop() {
     }
     Mix_HaltChannel(-1);
 }
-
 int main(int argc, char* argv[]) {
     srand(time(NULL));
 
@@ -1037,6 +1009,4 @@ int main(int argc, char* argv[]) {
     close();
     return 0;
 }
-// cho R Q nhay
-// giai quyet triet de loi sau 10 diem dam phat thua luon
 
