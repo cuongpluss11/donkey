@@ -517,8 +517,6 @@ void renderCurvedTitle(int yOffset) {
     int totalWidth = 0;
     vector<SDL_Surface*> charSurfaces;
     vector<SDL_Texture*> charTextures;
-
-    // Tạo surface và texture cho từng ký tự
     for (char c : title) {
         string charStr(1, c);
         SDL_Surface* surface = TTF_RenderText_Solid(font, charStr.c_str(), textColor);
@@ -600,7 +598,7 @@ void showIntro() {
 
         SDL_RenderPresent(renderer);
 
-        // Cập nhật hiệu ứng
+        // hieu ung
         if (SDL_GetTicks() - startTime > BLINK_INTERVAL) {
             visible = !visible;
             startTime = SDL_GetTicks();
@@ -608,7 +606,7 @@ void showIntro() {
         yOffset += movingDown ? 1 : -1;
         if (abs(yOffset) >= MOVE_RANGE) movingDown = !movingDown;
 
-        // Xử lý sự kiện
+        // su kien
         while (SDL_PollEvent(&e)) {
             if (e.type == SDL_QUIT || (e.type == SDL_KEYDOWN && e.key.keysym.sym != SDLK_ESCAPE)) {
                 quit = true;
@@ -708,7 +706,7 @@ bool showGameOver(int score, int goldCoins) {
                 if (e.key.keysym.sym == SDLK_q) return false;
             }
         }
-        SDL_Delay(16);
+        SDL_Delay(1);// cai nay chinh 1 hoac 16 thi se dung duoc r va q
     }
 }
 
@@ -1020,4 +1018,3 @@ int main(int argc, char* argv[]) {
     close();
     return 0;
 }
-
