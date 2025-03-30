@@ -412,7 +412,7 @@ void showNewRecordEffect(SDL_Renderer* renderer, TTF_Font* font, bool& isFirstNe
         SDL_FreeSurface(surface);
         SDL_DestroyTexture(texture);
 
-        // Xử lý sự kiện
+
         SDL_Event e;
         while (SDL_PollEvent(&e)) {
             if (e.type == SDL_QUIT) {
@@ -524,7 +524,7 @@ void renderCurvedTitle(int yOffset) {
 
         SDL_Texture* texture = SDL_CreateTextureFromSurface(renderer, surface);
         if (!texture) {
-            cout << "Failed to create texture! SDL Error: " << SDL_GetError() << endl;
+            SDL_GetError() ;
             SDL_FreeSurface(surface);
             continue;
         }
@@ -741,7 +741,7 @@ void spawnGrass() {
     ForbiddenZone zone;
     zone.rect = {grass.rect.x - 10, grass.rect.y - 10,
                 GRASS_WIDTH + 20, GRASS_HEIGHT + 30};
-    zone.framesRemaining = 60; // Cấm trong 60 frames
+    zone.framesRemaining = 60;
     forbiddenZones.push_back(zone);
 }
 void spawnDonkey() {
