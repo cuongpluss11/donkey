@@ -703,7 +703,7 @@ bool showGameOver(int score, int goldCoins) {
                 if (e.key.keysym.sym == SDLK_q) return false;
             }
         }
-        SDL_Delay(1);// cai nay chinh 1 hoac 16 thi se dung duoc r va q
+        SDL_Delay(16);// cai nay chinh 1 hoac 16 thi se dung duoc r va q
     }
 }
 
