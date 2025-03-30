@@ -32,8 +32,8 @@ const float base_speed = 3.0f;
 const int SCORE_INCREMENT = 1;
 float current_speed = base_speed;
 const int SPEED_INCREASE_INTERVAL = 10;
-const float SPEED_INCREMENT = 1.0f;
-const float MAX_SPEED = 10.0f;
+const float SPEED_INCREMENT = 2.0f;
+const float MAX_SPEED = 15.0f;
 bool coinCollected = false;
 bool isOnGround = true;
 const string HIGHSCORE_FILE = "highscore.txt";
@@ -385,12 +385,9 @@ void renderScore(int score, int goldCoins, int lives, int highScore) {
     }
 }
 void showNewRecordEffect(SDL_Renderer* renderer, TTF_Font* font, bool& isFirstNewRecord) {
-    // Chỉ hiển thị nếu là lần đầu đạt high score mới
     if (!isFirstNewRecord) {
         return;
     }
-
-    // Đánh dấu đã hiển thị để không hiển thị lại
     isFirstNewRecord = false;
 
     Uint32 startTime = SDL_GetTicks();
@@ -791,7 +788,7 @@ void spawnCoin() {
     } while (!isSafeToSpawn(newCoin));
 
     coin = newCoin;
-    coinCollected = false;  // Khởi tạo trạng thái chưa thu thập
+    coinCollected = false;  // trang thai chua thu thap
 
     ForbiddenZone zone;
     zone.rect = {coin.x - 15, coin.y - 15,
