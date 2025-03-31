@@ -574,8 +574,8 @@ void showIntro() {
 
         }
 
-        // Hiển thị hướng dẫn
-        string introText = "Press enter to start";
+
+        string introText = "Press any to start";
         SDL_Color textColor = {255, 255, 255, 255};
         TTF_Font* font = TTF_OpenFont("arial.ttf", 28);
         if (font) {
