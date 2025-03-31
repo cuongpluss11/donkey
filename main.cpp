@@ -11,7 +11,9 @@
 #include <cmath>
 
 using namespace std;
-
+// cac hang so dinh nghia kich thuoc man hinh , doi tuong game
+// cac thong so ve diem , toc do , va cham
+// bien toan cuc quan li trang thai game
 const int SCREEN_WIDTH = 640;
 const int SCREEN_HEIGHT = 480;
 const int CAR_WIDTH = 90;
@@ -45,6 +47,7 @@ float roadOffset = 0.0f;
 const int GRASS_SPAWN_INTERVAL = 120; // frames
 int grassSpawnTimer = 0;
 Uint32 invincibleUntil = 0;
+// cac con tro SDL de quan li cua so renderer texture va am thanh
 SDL_Window* window = NULL;
 SDL_Renderer* renderer = NULL;
 SDL_Texture* carTexture = NULL;
@@ -53,8 +56,10 @@ SDL_Texture* coinTexture = NULL;
 SDL_Texture* explosionTexture = NULL;
 SDL_Texture* introTexture = NULL;
 SDL_Texture* gameOverTexture = NULL;
+// mang texture cho cac frame co
 SDL_Texture* grassTextures[GRASS_FRAMES];
 TTF_Font* font = NULL;
+// cac bien am thanh hieu ung
 Mix_Music* introMusic = NULL;
 Mix_Chunk* pointSound = NULL;
 Mix_Chunk* collisionSound = NULL;
@@ -68,7 +73,8 @@ Mix_Chunk* grassSound = NULL;
 Mix_Chunk* coinSound = NULL;
 Mix_Chunk* collisionSmallSound = NULL;
 Mix_Chunk* extralifeSound= NULL;
-
+// cau truc du lieu game
+// cac hinh chu nhat rect dinh vi vi tri cac hinh chu nhat , xu
 SDL_Rect car = {SCREEN_WIDTH / 2 - CAR_WIDTH / 2, SCREEN_HEIGHT - CAR_HEIGHT - 20, CAR_WIDTH, CAR_HEIGHT};
 SDL_Rect donkey = {rand() % 2 == 0 ? 160 : SCREEN_WIDTH / 2, -DONKEY_HEIGHT, DONKEY_WIDTH, DONKEY_HEIGHT};
 SDL_Rect coin = {
@@ -77,6 +83,7 @@ SDL_Rect coin = {
     COIN_WIDTH,
     COIN_HEIGHT
 };
+// cau truc quan li cac hang gach ben duong
 struct BrickRow {
     int y;
     bool hasLine;
@@ -84,6 +91,7 @@ struct BrickRow {
 
 vector<BrickRow> leftBrickRows;
 vector<BrickRow> rightBrickRows;
+// cau truc co voi cac amination frame quan li co
 struct Grass {
     SDL_Rect rect;
     int frame;
@@ -96,7 +104,7 @@ struct Grass {
 vector<Grass> grasses;
 int goldCoins = 0;
 int lives = 0;
-
+// cau truc vung cam tranh sinh cac vat chong len nhau
 struct ForbiddenZone {
     SDL_Rect rect;
     int framesRemaining;
@@ -111,6 +119,7 @@ bool isSafeToSpawn(const SDL_Rect& newObj) {
     }
     return true;
 }
+// cau truc hitbox cho cac doi tuong ( nho hon kich thuoc that )
 struct HitBox {
     int x_offset;
     int y_offset;
@@ -143,14 +152,14 @@ bool checkPreciseCollision(const SDL_Rect& object1, const HitBox& hitbox1,
             rect1.y < rect2.y + rect2.h &&
             rect1.y + rect1.h > rect2.y);
 }
-
+// cau truc vao cac vach ke duong o giua
 struct RoadStrip {
     int y;
     int height;
 };
 
 vector<RoadStrip> roadStrips;
-
+// texture de tai anh
 SDL_Texture* loadTexture(const char* path) {
     SDL_Texture* texture = IMG_LoadTexture(renderer, path);
     if (!texture) {
@@ -158,6 +167,7 @@ SDL_Texture* loadTexture(const char* path) {
     }
     return texture;
 }
+// ham doc ghi diem cao
 int readHighScore() {
     ifstream file(HIGHSCORE_FILE);
     int highScore = 0;
@@ -175,6 +185,7 @@ void writeHighScore(int score) {
         file.close();
     }
 }
+//ham khoi tao cac doi tuong trong sdl
 bool init() {
     if (SDL_Init(SDL_INIT_VIDEO| SDL_INIT_AUDIO | SDL_INIT_EVENTS) < 0) {
         return false;
@@ -188,6 +199,7 @@ bool init() {
     if (TTF_Init() == -1) {
         return false;
     }
+    // tao cua so
     window = SDL_CreateWindow("Donkey Game", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, SCREEN_WIDTH, SCREEN_HEIGHT, SDL_WINDOW_SHOWN);
     if (!window) {
         return false;
@@ -196,12 +208,14 @@ bool init() {
     if (!renderer) {
         return false;
     }
+    // tao vach ke duong
     for (int i = 0; i < NUM_ROAD_STRIPS; ++i) {
         RoadStrip strip;
         strip.y = i * ROAD_STRIP_HEIGHT;
         strip.height = ROAD_STRIP_HEIGHT;
         roadStrips.push_back(strip);
     }
+    // tao tuong gach 2 ben
     for (int i = 0; i < NUM_BRICK_ROWS; ++i) {
         BrickRow row;
         row.y = i * BRICK_HEIGHT;
@@ -216,7 +230,7 @@ bool init() {
     }
     return true;
 }
-
+// ham de tuong gach di chuyen
 void updateBrickRows(float speed) {
     for (auto& row : leftBrickRows) {
         row.y += (int)speed;
@@ -248,6 +262,7 @@ void updateRoadStrips(float speed) {
         roadOffset -= ROAD_STRIP_HEIGHT;
     }
 }
+// ham hien thi giao dien cho man hinh choi chinh
 void renderBackground() {
     SDL_SetRenderDrawColor(renderer, 194, 178, 128, 255);
     SDL_Rect leftPanel = {0, 0, 160, SCREEN_HEIGHT};
@@ -292,7 +307,7 @@ void renderBackground() {
     }
 }
 
-
+// ham tao hieu ung countdown truoc khi vao tro choi
 void countdown() {
     Mix_HaltMusic();
 TTF_Font* countdownFont = TTF_OpenFont("comic.ttf", 80);
@@ -384,6 +399,7 @@ void renderScore(int score, int goldCoins, int lives, int highScore) {
         TTF_CloseFont(normalFont);
     }
 }
+// ham hieu ung khi dat diem cao moi
 void showNewRecordEffect(SDL_Renderer* renderer, TTF_Font* font, bool& isFirstNewRecord) {
     if (!isFirstNewRecord) {
         return;
@@ -421,6 +437,7 @@ void showNewRecordEffect(SDL_Renderer* renderer, TTF_Font* font, bool& isFirstNe
         }
     }
 }
+// ham tai media anh va am thanh
 bool loadMedia() {
     carTexture = loadTexture("oto.png");
     if (!carTexture) return false;
@@ -466,7 +483,7 @@ bool loadMedia() {
     if(!extralifeSound) return false;
      return true;
 }
-
+// ham giai phong bo nho cac doi tuong
 void close() {
     SDL_DestroyTexture(carTexture);
     SDL_DestroyTexture(donkeyTexture);
@@ -497,12 +514,14 @@ void close() {
     SDL_Quit();
     Mix_Quit();
 }
+// ham hien thi hieu ung no
 void showExplosion(int x, int y) {
     SDL_Rect explosionRect = {x - 32, y - 32, 64, 64};
     SDL_RenderCopy(renderer, explosionTexture, NULL, &explosionRect);
     SDL_RenderPresent(renderer);
     SDL_Delay(500);
 }
+// ham tao chu cho phan intro cong hinh sin
 void renderCurvedTitle(int yOffset) {
     string title = "DONKEY GAME";
     SDL_Color textColor = {255, 0, 0, 255};
@@ -555,7 +574,7 @@ void renderCurvedTitle(int yOffset) {
     }
     TTF_CloseFont(font);
 }
-
+// ham intro
 void showIntro() {
     Mix_PlayMusic(introMusic, -1);
     bool quit = false;
@@ -615,6 +634,7 @@ void showIntro() {
 
     Mix_HaltMusic();
 }
+// ham hien thi  ket thuc game
 bool showGameOver(int score, int goldCoins) {
     SDL_RenderCopy(renderer, gameOverTexture, NULL, NULL);
     SDL_Texture* screenTexture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGBA8888,
@@ -707,7 +727,7 @@ bool showGameOver(int score, int goldCoins) {
     }
 }
 
-
+// ham sinh ra co
 void spawnGrass() {
     if (rand() % 1000 >= GRASS_SPAWN_CHANCE) return;
     SDL_Rect newGrass;
@@ -737,13 +757,14 @@ void spawnGrass() {
     grass.isDangerous = true;
     grasses.push_back(grass);
 
-    // Thêm vùng cấm
+    // them vung cam
     ForbiddenZone zone;
     zone.rect = {grass.rect.x - 10, grass.rect.y - 10,
                 GRASS_WIDTH + 20, GRASS_HEIGHT + 30};
     zone.framesRemaining = 60;
     forbiddenZones.push_back(zone);
 }
+// ham sinh ra lua
 void spawnDonkey() {
     SDL_Rect newDonkey;
     newDonkey.w = DONKEY_WIDTH;
@@ -769,6 +790,7 @@ void spawnDonkey() {
     zone.framesRemaining = 120;
     forbiddenZones.push_back(zone);
 }
+// ham sinh xu
 void spawnCoin() {
     SDL_Rect newCoin;
     newCoin.w = COIN_WIDTH;
@@ -821,6 +843,7 @@ void updateGrasses() {
         }
     }
 }
+// ham tao hieu ung co lan lap lai 4 trang thai cua co khi lan
 void renderGrasses() {
     for (const auto& grass : grasses) {
         if (grass.active) {
@@ -828,9 +851,11 @@ void renderGrasses() {
         }
     }
 }
+// ham lap game chinh
 void gameLoop() {
     bool quit = false;
     SDL_Event e;
+    // khoi tao cac trang thai cho game
     int score = 0;
     int highScore = readHighScore();
     int goldCoins = 0;
@@ -846,11 +871,13 @@ void gameLoop() {
     Uint32 coinSpawnTime = 0;
     grasses.clear();
     forbiddenZones.clear();
+    // sinh ra cac doi tuong ban dau
     spawnDonkey();
     spawnCoin();
     car.x = SCREEN_WIDTH / 2 - CAR_WIDTH / 2;
     car.y = SCREEN_HEIGHT - CAR_HEIGHT - 20;
-    Mix_VolumeChunk(coinSound, MIX_MAX_VOLUME / 2);
+    // bat dau am thanh
+    Mix_VolumeChunk(coinSound, MIX_MAX_VOLUME / 3);
     Mix_PlayChannel(-1, engineSound, -1);
 
     while (!quit) {
@@ -858,6 +885,7 @@ void gameLoop() {
         while (SDL_PollEvent(&e) != 0) {
             if (e.type == SDL_QUIT) {
                 quit = true;
+                // cac thao tac tren ban phim
             } else if (e.type == SDL_KEYDOWN) {
                 switch (e.key.keysym.sym) {
                     case SDLK_LEFT:
@@ -891,6 +919,7 @@ void gameLoop() {
                 }
             }
         }
+        // cap nhat cac trang thai game
 
         updateForbiddenZones();
         updateRoadStrips(current_speed);
@@ -996,10 +1025,11 @@ if (score > highScore) {
         SDL_RenderPresent(renderer);
         SDL_Delay(16);
     }
+    // dung am thanh khi thoat game
     Mix_HaltChannel(-1);
 }
 int main(int argc, char* argv[]) {
-    srand(time(NULL));
+    srand(time(NULL));// khoi tao sinh ngau nhien
 
     if (!init()) {
         return -1;
